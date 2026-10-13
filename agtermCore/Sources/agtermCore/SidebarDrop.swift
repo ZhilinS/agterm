@@ -26,28 +26,36 @@ public enum SidebarDrop {
     /// The destination of a dragged session, or nil when the drop is a no-op (would leave order
     /// unchanged). `destination` is the POST-removal index `AppStore.moveSession` expects; `dropChildIndex`
     /// is the PRE-removal slot to highlight in the outline (or `onItemIndex` to append).
+    /// `folder` set means the destination is that folder's own list; nil, the workspace's `items` for a
+    /// batch drop and its flat session list for `resolveSession`.
     public struct SessionResolution: Equatable, Sendable {
         public let workspace: UUID
+        public var folder: UUID?
         public let dropChildIndex: Int
         public let destination: Int
     }
 
     /// A dragged session's original location before a batch move removes anything.
+    /// `index` is in its container's own list: the folder's when `folder` is set, else the workspace's.
     public struct SessionSource: Equatable, Sendable {
         public let workspace: UUID
+        public let folder: UUID?
         public let index: Int
 
-        public init(workspace: UUID, index: Int) {
+        public init(workspace: UUID, folder: UUID? = nil, index: Int) {
             self.workspace = workspace
+            self.folder = folder
             self.index = index
         }
     }
 
-    /// Describes the row a session was dropped onto. A workspace row uses the child index directly; a
-    /// session row redirects to its owner workspace, landing just after it when dropped ON the row.
+    /// Describes the row a session was dropped onto. A workspace or folder row uses the child index directly
+    /// (ON a folder row appends to it); a session row redirects to its container, landing just after it when
+    /// dropped ON the row. Counts and indices are in the container's own list.
     public enum SessionDropTarget: Equatable, Sendable {
         case workspaceRow(id: UUID, sessionCount: Int)
-        case sessionRow(workspace: UUID, sessionIndex: Int, sessionCount: Int)
+        case sessionRow(workspace: UUID, folder: UUID? = nil, sessionIndex: Int, sessionCount: Int)
+        case folderRow(workspace: UUID, folder: UUID, sessionCount: Int)
     }
 
     /// Resolves a session drop into the move it would perform (target workspace + post-removal index), or
@@ -57,21 +65,9 @@ public enum SidebarDrop {
     /// current slot (including appending an already-last session) is a no-op.
     public static func resolveSession(sourceWorkspace: UUID, sourceIndex: Int,
                                       target: SessionDropTarget, childIndex: Int) -> SessionResolution? {
-        let workspace: UUID
-        let targetCount: Int
-        let dropChildIndex: Int
-        switch target {
-        case let .workspaceRow(id, sessionCount):
-            workspace = id
-            targetCount = sessionCount
-            dropChildIndex = childIndex
-        case let .sessionRow(owner, sessionIndex, sessionCount):
-            workspace = owner
-            targetCount = sessionCount
-            dropChildIndex = childIndex == onItemIndex ? sessionIndex + 1 : childIndex
-        }
+        let (workspace, folder, targetCount, dropChildIndex) = container(of: target, childIndex: childIndex)
 
-        let sameWorkspace = sourceWorkspace == workspace
+        let sameWorkspace = sourceWorkspace == workspace && folder == nil
         var destination = dropChildIndex
         if dropChildIndex == onItemIndex {
             destination = targetCount
@@ -85,7 +81,20 @@ public enum SidebarDrop {
             let landed = max(0, min(destination, targetCount - 1))
             if landed == sourceIndex { return nil }
         }
-        return SessionResolution(workspace: workspace, dropChildIndex: dropChildIndex, destination: destination)
+        return SessionResolution(workspace: workspace, folder: folder, dropChildIndex: dropChildIndex,
+                                 destination: destination)
+    }
+
+    private static func container(of target: SessionDropTarget, childIndex: Int)
+        -> (workspace: UUID, folder: UUID?, count: Int, dropChildIndex: Int) {
+        switch target {
+        case let .workspaceRow(id, sessionCount):
+            (id, nil, sessionCount, childIndex)
+        case let .sessionRow(owner, folder, sessionIndex, sessionCount):
+            (owner, folder, sessionCount, childIndex == onItemIndex ? sessionIndex + 1 : childIndex)
+        case let .folderRow(owner, folder, sessionCount):
+            (owner, folder, sessionCount, childIndex)
+        }
     }
 
     /// Resolves a batch session drop into one remove-all/insert-block move. `sources` must be in the
@@ -95,22 +104,10 @@ public enum SidebarDrop {
                                        target: SessionDropTarget,
                                        childIndex: Int) -> SessionResolution? {
         guard !sources.isEmpty else { return nil }
-        let workspace: UUID
-        let targetCount: Int
-        let dropChildIndex: Int
-        switch target {
-        case let .workspaceRow(id, sessionCount):
-            workspace = id
-            targetCount = sessionCount
-            dropChildIndex = childIndex
-        case let .sessionRow(owner, sessionIndex, sessionCount):
-            workspace = owner
-            targetCount = sessionCount
-            dropChildIndex = childIndex == onItemIndex ? sessionIndex + 1 : childIndex
-        }
+        let (workspace, folder, targetCount, dropChildIndex) = container(of: target, childIndex: childIndex)
 
         let rawDestination = dropChildIndex == onItemIndex ? targetCount : dropChildIndex
-        let sourceIndicesInTarget = sources.filter { $0.workspace == workspace }.map(\.index).sorted()
+        let sourceIndicesInTarget = sources.filter { $0.workspace == workspace && $0.folder == folder }.map(\.index).sorted()
         let removedBeforeDestination = sourceIndicesInTarget.count { $0 < rawDestination }
         let destination = rawDestination - removedBeforeDestination
 
@@ -121,7 +118,8 @@ public enum SidebarDrop {
             return nil
         }
 
-        return SessionResolution(workspace: workspace, dropChildIndex: dropChildIndex, destination: destination)
+        return SessionResolution(workspace: workspace, folder: folder, dropChildIndex: dropChildIndex,
+                                 destination: destination)
     }
 
     /// Resolves an anchor-relative session placement (control `--after`/`--before <sid>`) into the same move

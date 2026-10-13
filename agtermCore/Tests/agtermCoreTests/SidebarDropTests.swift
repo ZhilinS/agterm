@@ -309,4 +309,55 @@ struct SidebarDropTests {
         let insert = SidebarDrop.workspaceInsertIndex(visibleIndices: [1, 3], slot: 1)
         #expect(SidebarDrop.resolveWorkspace(sourceIndex: 1, count: 4, childIndex: insert) == nil)
     }
+
+    // MARK: - Folders
+
+    private static let folder = UUID()
+
+    private func batch(_ source: SidebarDrop.SessionSource, _ target: SidebarDrop.SessionDropTarget,
+                       _ childIndex: Int) -> SidebarDrop.SessionResolution? {
+        SidebarDrop.resolveSessions(sources: [source], target: target, childIndex: childIndex)
+    }
+
+    private func into(_ workspace: UUID, folder: UUID? = folder, _ dropChildIndex: Int, _ destination: Int)
+        -> SidebarDrop.SessionResolution {
+        SidebarDrop.SessionResolution(workspace: workspace, folder: folder, dropChildIndex: dropChildIndex,
+                                      destination: destination)
+    }
+
+    @Test func dropOnAFolderRowAppendsToIt() {
+        let move = batch(.init(workspace: Self.wsA, index: 0), .folderRow(workspace: Self.wsA, folder: Self.folder, sessionCount: 2),
+                         Self.onItem)
+        #expect(move == into(Self.wsA, Self.onItem, 2))
+    }
+
+    @Test func downwardMoveInsideAFolderAppliesMinusOne() {
+        let move = batch(.init(workspace: Self.wsA, folder: Self.folder, index: 0),
+                         .folderRow(workspace: Self.wsA, folder: Self.folder, sessionCount: 3), 2)
+        #expect(move == into(Self.wsA, 2, 1))
+    }
+
+    @Test func dropOnASessionRowInsideAFolderLandsAfterItThere() {
+        let move = batch(.init(workspace: Self.wsA, index: 0),
+                         .sessionRow(workspace: Self.wsA, folder: Self.folder, sessionIndex: 1, sessionCount: 2), Self.onItem)
+        #expect(move == into(Self.wsA, 2, 2))
+    }
+
+    @Test func dragOutOfAFolderTakesTheWorkspaceSlotUnadjusted() {
+        let move = batch(.init(workspace: Self.wsA, folder: Self.folder, index: 0),
+                         .workspaceRow(id: Self.wsA, sessionCount: 3), 1)
+        #expect(move == into(Self.wsA, folder: nil, 1, 1))
+    }
+
+    @Test(arguments: [1, 2])
+    func droppingBackIntoTheSameFolderSlotIsANoOp(childIndex: Int) {
+        #expect(batch(.init(workspace: Self.wsA, folder: Self.folder, index: 1),
+                      .folderRow(workspace: Self.wsA, folder: Self.folder, sessionCount: 2), childIndex) == nil)
+    }
+
+    @Test func crossWorkspaceDropIntoAFolderKeepsTheIndex() {
+        let move = batch(.init(workspace: Self.wsB, index: 0),
+                         .folderRow(workspace: Self.wsA, folder: Self.folder, sessionCount: 1), 0)
+        #expect(move == into(Self.wsA, 0, 0))
+    }
 }
