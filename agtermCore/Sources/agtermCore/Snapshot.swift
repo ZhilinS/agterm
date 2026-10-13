@@ -106,8 +106,7 @@ public struct WorkspaceSnapshot: Codable, Equatable, Sendable {
     public var id: UUID
     public var name: String
     public var items: [WorkspaceItemSnapshot]
-    /// The INVERSE of `isExpanded`, so missing → expanded (the default) and only a collapsed workspace
-    /// writes it — an all-expanded tree serializes byte-identically to a legacy snapshot.
+    /// The INVERSE of `isExpanded`, so missing → expanded (the default) and only a collapsed workspace writes it.
     public var collapsed: Bool?
 
     public init(id: UUID, name: String, items: [WorkspaceItemSnapshot], collapsed: Bool? = nil) {

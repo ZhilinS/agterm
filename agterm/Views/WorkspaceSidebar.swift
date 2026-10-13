@@ -141,18 +141,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// so the mount's own rebuild counts as rendered. A change to either swaps the whole data source.
         private var lastMode: SidebarMode = .tree
         private var lastFlaggedLayout: FlaggedViewLayout?
-        /// Workspace and folder ids the user has expanded, tracked via the expand/collapse callbacks. The source of
-        /// truth for restoring expansion on rebuild: NSOutlineView discards its own expansion state for
-        /// items it no longer renders: the flat flagged list drops every workspace node, and the flagged tree
-        /// drops the ones holding nothing flagged.
-        /// Mirrored into the store on every assignment — a suppressed reveal opens a row without touching
-        /// `Workspace.isExpanded`, so the persisted flag alone cannot answer "is this row open right now",
-        /// which is what Collapse/Expand Workspace has to fold. One `didSet` rather than a push beside each
-        /// of the seven mutation sites, because a missed site desynchronizes silently. Deliberately NOT
-        /// delta-guarded: a fresh Coordinator starts empty, so seeding an all-collapsed tree assigns empty
-        /// over empty and a guard would skip the push, leaving the PREVIOUS mount's ids in the store while
-        /// the outline shows every row folded. The store field is `@ObservationIgnored`, so a redundant
-        /// push costs one set copy and invalidates nothing.
+        /// Workspace and folder rows open in the outline, which forgets rows a flagged layout leaves out. Mirrored
+        /// to the store, unguarded, because a suppressed reveal opens a row without touching the persisted flag.
         private(set) var expandedWorkspaceIDs = Set<UUID>() {
             didSet { store.noteSidebarExpansion(expandedWorkspaceIDs) }
         }

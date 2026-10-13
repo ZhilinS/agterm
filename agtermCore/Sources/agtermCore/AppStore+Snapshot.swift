@@ -56,8 +56,7 @@ extension AppStore {
     }
 
     /// The single workspace-to-disk producer, used by the launch snapshot and by a closed workspace's
-    /// Recent Closed record. Only a collapsed workspace writes the flag, so an all-expanded tree matches a
-    /// legacy snapshot.
+    /// Recent Closed record.
     func workspaceSnapshot(_ workspace: Workspace) -> WorkspaceSnapshot {
         let items = workspace.items.compactMap { item -> WorkspaceItemSnapshot? in
             switch item {

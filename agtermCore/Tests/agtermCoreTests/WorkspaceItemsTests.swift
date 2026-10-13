@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import agtermCore
 
-/// Renders items as `a F(b c) d E()`, sessions by custom name, folders by name.
 @MainActor func shape(_ workspace: Workspace) -> String {
     workspace.items.map { item in
         switch item {
