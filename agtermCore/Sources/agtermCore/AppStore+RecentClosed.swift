@@ -192,7 +192,7 @@ extension AppStore {
                                    workspaceName: String,
                                    workspaceIndex: Int,
                                    sessionIndex: Int,
-                                   placement: SessionPlacement?,
+                                   placement: SessionPlacement? = nil,
                                    id: UUID = UUID()) -> UUID? {
         guard let recentClosedStore, session.isPersistable else { return nil }
         recentClosedStore.record(RecentClosedItem(
