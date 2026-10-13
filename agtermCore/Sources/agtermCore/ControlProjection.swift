@@ -337,6 +337,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// htmlOverlays lists the pages in this session's overlay slots, session-wide first then left and right;
     /// omitted when none is open. `overlay` and `paneOverlays` report their slots as covered too.
     public let htmlOverlays: [ControlHtmlOverlayNode]?
+    /// The owning folder's name; omitted for a loose session.
+    public let folder: String?
 
     public init(id: String, name: String, cwd: String, title: String? = nil, active: Bool, split: Bool,
                 hasSplit: Bool? = nil, backedByZmx: Bool?, splitAxis: String? = nil,
@@ -355,7 +357,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 context: String? = nil, remoteHost: String? = nil, splitCwd: String? = nil,
                 liveAttribution: String? = nil, splitLiveAttribution: String? = nil,
                 presentation: ControlPresentationNode? = nil, presenters: ControlPresentersNode? = nil,
-                remoteOverlays: [ControlRemoteOverlayNode]? = nil, htmlOverlays: [ControlHtmlOverlayNode]? = nil) {
+                remoteOverlays: [ControlRemoteOverlayNode]? = nil, htmlOverlays: [ControlHtmlOverlayNode]? = nil,
+                folder: String? = nil) {
         self.id = id
         self.name = name
         self.cwd = cwd
@@ -405,6 +408,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.presenters = presenters
         self.remoteOverlays = remoteOverlays
         self.htmlOverlays = htmlOverlays
+        self.folder = folder
     }
 }
 

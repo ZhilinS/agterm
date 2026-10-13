@@ -371,7 +371,10 @@ public final class AppStore {
                                           liveAttribution: mainAttribution?.rawValue, splitLiveAttribution: splitAttribution?.rawValue,
                                           presentation: presentationNode(of: session), presenters: presentersNode(of: session),
                                           remoteOverlays: remoteOverlayNodes(of: session),
-                                          htmlOverlays: htmlOverlayNodes(session, zoom: htmlZoom))
+                                          htmlOverlays: htmlOverlayNodes(session, zoom: htmlZoom),
+                                          folder: workspace.container(ofSession: session.id).flatMap {
+                                              workspace.folder(withID: $0)?.name
+                                          })
             }
             return ControlWorkspaceNode(id: workspace.id.uuidString, name: workspace.name,
                                         active: workspace.id == activeWorkspaceID,
@@ -643,7 +646,9 @@ public final class AppStore {
         var movingIDs = orderedSessionIDs(matching: Set(sessionIDs))
         // a one-element batch stays wire-equivalent to `moveSession`, so only multi-selection filters
         if index == nil, movingIDs.count > 1 {
-            movingIDs = movingIDs.filter { workspace(forSession: $0)?.id != targetID }
+            movingIDs = movingIDs.filter { id in
+                workspace(forSession: id).map { $0.id != targetID || $0.container(ofSession: id) != nil } ?? false
+            }
         }
         guard !movingIDs.isEmpty else { return 0 }
 
@@ -953,7 +958,7 @@ public final class AppStore {
         return nil
     }
 
-    private func orderedSessionIDs(matching ids: Set<UUID>) -> [UUID] {
+    func orderedSessionIDs(matching ids: Set<UUID>) -> [UUID] {
         workspaces.flatMap(\.sessions).map(\.id).filter { ids.contains($0) }
     }
 

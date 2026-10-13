@@ -134,6 +134,11 @@ public struct Workspace: Identifiable {
         items.append(.session(session))
     }
 
+    /// Inserts loose at a clamped `items` slot, which can sit before a folder where a flat index cannot.
+    public mutating func insertSession(_ session: Session, atItem slot: Int) {
+        items.insert(.session(session), at: max(0, min(slot, items.count)))
+    }
+
     /// Inserts into the folder at a clamped slot; no-op on an unknown folder.
     public mutating func insertSession(_ session: Session, inFolder folderID: UUID, at slot: Int? = nil) {
         updateFolder(folderID) { folder in
