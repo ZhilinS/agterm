@@ -112,6 +112,66 @@ final class SidebarFolderUITests: XCTestCase {
         XCTAssertEqual(store.folder(withID: folder.id)?.isExpanded, true)
     }
 
+    func testSpringLoadingAFolderKeepsItsSpringOpenedWorkspaceOpen() throws {
+        let folder = try XCTUnwrap(store.addFolder(toWorkspace: workspace, name: "F", containing: [sessions[1].id]))
+        let other = store.addWorkspace(name: "other")
+        let dragged = try XCTUnwrap(store.addSession(toWorkspace: other.id, cwd: "/tmp/d"))
+        try collapse(folder.id, then: workspace)
+        let workspaceNode = try XCTUnwrap(node(workspace))
+        let info = sessionDrag([dragged.id])
+
+        XCTAssertEqual(validate(info, on: workspaceNode), .move)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        XCTAssertTrue(outline.isItemExpanded(workspaceNode))
+        let folderNode = try XCTUnwrap(node(folder.id))
+        XCTAssertEqual(validate(info, on: folderNode), .move)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        XCTAssertTrue(outline.isItemExpanded(workspaceNode), "hovering the folder keeps its workspace open")
+        XCTAssertTrue(outline.isItemExpanded(folderNode))
+
+        XCTAssertEqual(coordinator.springLoadedIDs, [workspace, folder.id])
+        coordinator.finishDraggingSequence()
+        XCTAssertEqual(coordinator.springLoadedIDs, [])
+        XCTAssertFalse(outline.isItemExpanded(folderNode))
+        XCTAssertFalse(outline.isItemExpanded(workspaceNode))
+        XCTAssertEqual(store.workspaces.first?.isExpanded, false)
+        XCTAssertEqual(store.folder(withID: folder.id)?.isExpanded, false)
+    }
+
+    func testSelectingASessionInACollapsedFolderRevealsBothRows() throws {
+        let folder = try XCTUnwrap(store.addFolder(toWorkspace: workspace, name: "F", containing: [sessions[1].id]))
+        try collapse(folder.id, then: workspace)
+        store.selectSession(sessions[1].id)
+        coordinator.syncSelection()
+        XCTAssertTrue(outline.isItemExpanded(try XCTUnwrap(node(workspace))))
+        XCTAssertTrue(outline.isItemExpanded(try XCTUnwrap(node(folder.id))))
+        XCTAssertEqual(outline.selectedRow, row(of: sessions[1].id))
+        XCTAssertEqual(store.folder(withID: folder.id)?.isExpanded, false, "a reveal does not persist")
+    }
+
+    func testFlaggedModeRoundTripKeepsFolderExpansion() throws {
+        let open = try XCTUnwrap(store.addFolder(toWorkspace: workspace, name: "open", containing: [sessions[1].id]))
+        let shut = try XCTUnwrap(store.addFolder(toWorkspace: workspace, name: "shut", containing: [sessions[2].id]))
+        coordinator.reconcile()
+        outline.collapseItem(try XCTUnwrap(node(shut.id)))
+        store.setSidebarMode(.flagged)
+        coordinator.reconcile()
+        XCTAssertNil(node(open.id))
+        store.setSidebarMode(.tree)
+        coordinator.reconcile()
+        XCTAssertTrue(outline.isItemExpanded(try XCTUnwrap(node(open.id))))
+        XCTAssertFalse(outline.isItemExpanded(try XCTUnwrap(node(shut.id))))
+    }
+
+    private func collapse(_ folderID: UUID, then workspaceID: UUID) throws {
+        coordinator.reconcile()
+        outline.collapseItem(try XCTUnwrap(node(folderID)))
+        let workspaceNode = try XCTUnwrap(node(workspaceID))
+        outline.collapseItem(workspaceNode)
+        XCTAssertFalse(outline.isItemExpanded(workspaceNode))
+        XCTAssertNil(node(folderID), "the folder row is hidden inside the collapsed workspace")
+    }
+
     private func node(_ id: UUID) -> SidebarNode? {
         row(of: id).flatMap { outline.item(atRow: $0) as? SidebarNode }
     }
@@ -127,15 +187,21 @@ final class SidebarFolderUITests: XCTestCase {
         NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item)
     }
 
-    private func drop(_ ids: [UUID], on node: SidebarNode, childIndex: Int) -> Bool {
+    private func sessionDrag(_ ids: [UUID]) -> FakeSessionDrag {
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("agterm-folder-tests-\(UUID().uuidString)"))
-        defer { pasteboard.releaseGlobally() }
+        addTeardownBlock { pasteboard.releaseGlobally() }
         pasteboard.clearContents()
         pasteboard.setString(ids.map(\.uuidString).joined(separator: "\n"), forType: sessionPasteboardType)
-        let info = FakeSessionDrag(pasteboard, over: outline)
-        guard coordinator.outlineView(outline, validateDrop: info, proposedItem: node, proposedChildIndex: childIndex) == .move else {
-            return false
-        }
+        return FakeSessionDrag(pasteboard, over: outline)
+    }
+
+    private func validate(_ info: FakeSessionDrag, on node: SidebarNode, childIndex: Int = SidebarDrop.onItemIndex) -> NSDragOperation {
+        coordinator.outlineView(outline, validateDrop: info, proposedItem: node, proposedChildIndex: childIndex)
+    }
+
+    private func drop(_ ids: [UUID], on node: SidebarNode, childIndex: Int) -> Bool {
+        let info = sessionDrag(ids)
+        guard validate(info, on: node, childIndex: childIndex) == .move else { return false }
         return coordinator.outlineView(outline, acceptDrop: info, item: node, childIndex: childIndex)
     }
 

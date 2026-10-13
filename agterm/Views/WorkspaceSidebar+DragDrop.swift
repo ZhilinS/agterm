@@ -213,27 +213,27 @@ extension WorkspaceSidebar.Coordinator {
         return (directories, exceedsLimit)
     }
 
-    /// `workspaceID` may name a folder row too; both spring-open the same way.
+    /// `workspaceID` may name a folder row; spring-opened rows holding the target stay open.
     private func scheduleSpringLoadedExpansion(of workspaceID: UUID, in outlineView: NSOutlineView) {
         guard store.sidebarMode == .tree, let node = cachedNode(workspaceID) else {
             cancelSpringLoadedExpansion()
             return
         }
-        if springLoadedWorkspaceID == workspaceID, outlineView.isItemExpanded(node) { return }
+        let owner = store.workspace(forFolder: workspaceID)?.id
+        collapseSpringLoaded(keeping: springLoadedIDs.prefix { $0 == owner || $0 == workspaceID }.count)
         guard !outlineView.isItemExpanded(node) else {
-            cancelSpringLoadedExpansion()
+            cancelPendingSpringLoad()
             return
         }
         if pendingSpringLoadedExpansion?.workspaceID == workspaceID { return }
-        cancelSpringLoadedExpansion()
+        cancelPendingSpringLoad()
         let workItem = DispatchWorkItem { [weak self, weak outlineView] in
             guard let self, let outlineView, let node = self.cachedNode(workspaceID),
                   !outlineView.isItemExpanded(node) else { return }
-            self.springLoadedWorkspaceID = workspaceID
             self.suppressExpansionPersist = true
             outlineView.expandItem(node)
             self.suppressExpansionPersist = false
-            if !outlineView.isItemExpanded(node) { self.springLoadedWorkspaceID = nil }
+            if outlineView.isItemExpanded(node) { self.springLoadedIDs.append(workspaceID) }
             if self.pendingSpringLoadedExpansion?.workspaceID == workspaceID {
                 self.pendingSpringLoadedExpansion = nil
             }
@@ -243,22 +243,31 @@ extension WorkspaceSidebar.Coordinator {
     }
 
     func cancelSpringLoadedExpansion() {
-        let workspaceID = springLoadedWorkspaceID
+        collapseSpringLoaded(keeping: 0)
         clearSpringLoadedTracking()
-        guard let workspaceID, let outlineView, let node = cachedNode(workspaceID),
-              outlineView.isItemExpanded(node) else { return }
-        suppressExpansionPersist = true
-        outlineView.collapseItem(node)
-        suppressExpansionPersist = false
+    }
+
+    private func collapseSpringLoaded(keeping count: Int) {
+        while springLoadedIDs.count > count {
+            let id = springLoadedIDs.removeLast()
+            guard let outlineView, let node = cachedNode(id), outlineView.isItemExpanded(node) else { continue }
+            suppressExpansionPersist = true
+            outlineView.collapseItem(node)
+            suppressExpansionPersist = false
+        }
+    }
+
+    private func cancelPendingSpringLoad() {
+        pendingSpringLoadedExpansion?.workItem.cancel()
+        pendingSpringLoadedExpansion = nil
     }
 
     /// Drops the pending spring-load work item and the opened-row tracking WITHOUT collapsing, so a workspace
     /// the drag spring-opened stays open on a successful drop: a `moveSessions` accept never changes the
     /// selection, so `syncSelection`'s reveal can't re-expand it and collapsing would hide the moved row.
     private func clearSpringLoadedTracking() {
-        pendingSpringLoadedExpansion?.workItem.cancel()
-        pendingSpringLoadedExpansion = nil
-        springLoadedWorkspaceID = nil
+        cancelPendingSpringLoad()
+        springLoadedIDs = []
     }
 
     /// Ends the current AppKit dragging sequence: always drops the per-sequence URL cache, and either

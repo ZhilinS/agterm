@@ -164,12 +164,12 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// Scheduled single-click workspace toggle, deferred by the double-click interval so a rename
         /// double-click can cancel it — else its first click flips the workspace open on the way into edit.
         var pendingRowToggle: DispatchWorkItem?
-        /// Scheduled spring-loaded workspace expand while a drag hovers over a collapsed workspace row.
+        /// Scheduled spring-loaded expand while a drag hovers over a collapsed workspace or folder row.
         /// View-only like the selection reveal: opens the target for this drag without persisting expansion.
         var pendingSpringLoadedExpansion: (workspaceID: UUID, workItem: DispatchWorkItem)?
-        /// A workspace opened by spring-loading during the current drag. Finder-style spring navigation is
-        /// transient: leaving/cancelling collapses this row back to its pre-drag state.
-        var springLoadedWorkspaceID: UUID?
+        /// Rows spring-opened during the current drag, ancestors first. Finder-style spring navigation is
+        /// transient: leaving/cancelling collapses them back, deepest first.
+        var springLoadedIDs: [UUID] = []
         /// Finder file URLs resolved for the current AppKit dragging sequence. Validation runs on every
         /// mouse move, so caching keeps network-volume metadata checks out of the hot path.
         var cachedDirectoryDrop: (sequenceNumber: Int, urls: [URL], exceedsLimit: Bool)?
