@@ -147,6 +147,7 @@ final class SidebarFolderUITests: XCTestCase {
         XCTAssertTrue(outline.isItemExpanded(try XCTUnwrap(node(folder.id))))
         XCTAssertEqual(outline.selectedRow, row(of: sessions[1].id))
         XCTAssertEqual(store.folder(withID: folder.id)?.isExpanded, false, "a reveal does not persist")
+        XCTAssertEqual(store.workspaces.first?.isExpanded, false)
     }
 
     func testFlaggedModeRoundTripKeepsFolderExpansion() throws {
