@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.36.1 - 2026-10-13
+
+First release of the [ZhilinS/agterm](https://github.com/ZhilinS/agterm) fork, on top of upstream v0.36.0.
+
+### New Features
+
+- **Session folders.** A workspace can group sessions into folders, one level, folders and loose sessions in any order. Right-click a session → New Folder puts it in a new folder; right-click a workspace → New Folder makes an empty one. Drag sessions into and out of folders, Move to lists folders under the workspaces, Delete Folder closes its sessions after a confirmation and Reopen Closed Item brings them back. Folders survive a relaunch. `tree` reports `folder` on a session node. The state file format changes: `items` replaces `sessions`, and a file written by this fork is not read by upstream agterm.
+- **Rename on double-click** (Settings ▸ General ▸ Mouse, on by default). Off, a click on a workspace or folder row expands or collapses it at once instead of waiting for the double-click interval, and double-click no longer renames those rows; sessions still rename on double-click.
+- **Quick terminal ⌘-drag.** Hold ⌘ and drag the quick terminal to move it; the position is remembered per screen.
+
+
 ## v0.36.0 - 2026-10-09
 
 ### New Features

@@ -1,6 +1,15 @@
 # agterm - a simply good terminal with a full control API
 
-[![Build Status](https://github.com/umputun/agterm/workflows/build/badge.svg)](https://github.com/umputun/agterm/actions) [![Coverage Status](https://coveralls.io/repos/github/umputun/agterm/badge.svg?branch=master)](https://coveralls.io/github/umputun/agterm?branch=master)
+> **Fork.** This is [ZhilinS/agterm](https://github.com/ZhilinS/agterm), a personal fork of
+> [umputun/agterm](https://github.com/umputun/agterm). Everything below is the original project; on top of
+> it this fork adds **session folders** inside a workspace (`workspace → folder → session`), a
+> **Rename on double-click** setting that makes a workspace or folder row toggle without the double-click
+> delay, and **⌘-drag** to move the quick terminal. Upstream declined folders as a model change
+> (discussions #293, #397, #406), so they live here only. Install from this fork's tap:
+>
+> ```sh
+> brew install --cask zhilins/apps/agterm
+> ```
 
 **[agterm.com](https://agterm.com)** · [Documentation](https://agterm.com/docs) · [Command reference](https://agterm.com/commands) · [Cookbook](cookbook/)
 
@@ -62,15 +71,15 @@ Pre-built releases are for **Apple Silicon (arm64) Macs running macOS 14 or late
 
 Releases are signed with a Developer ID certificate and notarized by Apple, so macOS Gatekeeper opens them with no extra steps.
 
-Homebrew:
+Homebrew (this fork; the original is `umputun/apps/agterm`, the two share the app name so install one):
 
 ```sh
-brew install --cask umputun/apps/agterm
+brew install --cask zhilins/apps/agterm
 ```
 
 Direct download:
 
-Download the latest `.dmg` from the [releases page](https://github.com/umputun/agterm/releases), open it, and drag `agterm.app` into `/Applications`.
+Download the latest `.dmg` from the fork's [releases page](https://github.com/ZhilinS/agterm/releases), open it, and drag `agterm.app` into `/Applications`.
 
 The Homebrew cask already installs the `agtermctl` command-line tool; from the DMG, put it on your `PATH` with **Help ▸ Install Command Line Tool…**. The same **Help** menu also installs the agent status hooks and the agent skill, both optional and safe to rerun.
 

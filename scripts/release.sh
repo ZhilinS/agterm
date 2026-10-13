@@ -66,7 +66,7 @@ if [ "$PUBLISH" = "1" ]; then
 fi
 APP="$BUILD_DIR/DerivedData/Build/Products/Release/agterm.app"
 NOTARY_PROFILE="${AGTERM_NOTARY_PROFILE:-agterm-notary}"
-TAP_REPO="umputun/homebrew-apps"
+TAP_REPO="ZhilinS/homebrew-apps"
 
 # resolve the signing identity: explicit override, else the first Developer ID
 # Application identity in the keychain, else ad-hoc dry-run.
@@ -123,7 +123,7 @@ release_notes() {
 
 Signed with a Developer ID certificate and notarized by Apple, so macOS Gatekeeper opens it with no extra steps. Apple Silicon (arm64) only, macOS 14 or later.
 
-- **Homebrew:** \`brew install --cask umputun/apps/agterm\`
+- **Homebrew:** \`brew install --cask zhilins/apps/agterm\`
 - **Direct download:** open the \`.dmg\` and drag \`agterm.app\` into \`/Applications\`.
 EOF
 }
