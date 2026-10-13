@@ -130,8 +130,7 @@ public enum PaneIdentityInventory {
         var identities: Set<UUID> = []
         var changed = false
         for workspaceIndex in snapshot.workspaces.indices {
-            for sessionIndex in snapshot.workspaces[workspaceIndex].sessions.indices {
-                var session = snapshot.workspaces[workspaceIndex].sessions[sessionIndex]
+            snapshot.workspaces[workspaceIndex].mapSessions { session in
                 if session.paneIdentity == nil {
                     session.paneIdentity = UUID()
                     changed = true
@@ -145,7 +144,6 @@ public enum PaneIdentityInventory {
                     }
                     if let splitPaneIdentity = session.splitPaneIdentity { identities.insert(splitPaneIdentity) }
                 }
-                snapshot.workspaces[workspaceIndex].sessions[sessionIndex] = session
             }
         }
         return Upgrade(identities: identities, changed: changed)

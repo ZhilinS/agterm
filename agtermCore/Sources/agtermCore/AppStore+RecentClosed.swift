@@ -31,7 +31,7 @@ extension AppStore {
             }
             let session = session(from: recent.snapshot)
             let insertAt = max(0, min(recent.sessionIndex, workspaces[index].sessions.count))
-            workspaces[index].sessions.insert(session, at: insertAt)
+            workspaces[index].insertSession(session, atFlat: insertAt)
             emitSessionCreated(session, workspace: workspaces[index].id)
             selectedSessionID = session.id
             replaceSidebarSelection(with: selectedSessionID)
@@ -51,7 +51,7 @@ extension AppStore {
             let taken = Set(workspaces.flatMap(\.sessions).map(\.id))
                 .union(pendingHeldSessionIDs())
                 .union(occupiedElsewhere)
-            workspace.sessions.removeAll { taken.contains($0.id) }
+            for id in workspace.sessions.map(\.id) where taken.contains(id) { workspace.removeSession(id: id) }
             // persistent Open Recent appends, like most editors' recent-project flow: a reopen brings the
             // workspace back without reshuffling current workspaces.
             workspaces.append(workspace)
@@ -119,7 +119,7 @@ extension AppStore {
                 .union(pendingHeldSessionIDs())
                 .union(occupiedElsewhere)
             let missing = recent.snapshot.sessions.filter { !taken.contains($0.id) }.map { session(from: $0) }
-            workspaces[index].sessions.append(contentsOf: missing)
+            for session in missing { workspaces[index].appendSession(session) }
             for session in missing { emitSessionCreated(session, workspace: workspaces[index].id) }
             if recent.focusMember == true { markFocusMember(workspaces[index].id) } // before the reselect, as above
             let target = recent.selectedSessionID.flatMap { id in

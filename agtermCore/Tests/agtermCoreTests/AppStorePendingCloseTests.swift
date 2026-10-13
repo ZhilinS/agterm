@@ -70,7 +70,7 @@ struct AppStorePendingCloseTests {
             session.hasSplit = true
             session.splitPaneIdentity = UUID()
         }
-        store.workspaces[0].sessions.append(session)
+        store.workspaces[0].appendSession(session)
         return session
     }
 

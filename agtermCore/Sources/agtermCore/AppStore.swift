@@ -472,9 +472,9 @@ public final class AppStore {
         session.commandWait = wait
         if let index {
             let destination = max(0, min(index, workspaces[wsIndex].sessions.count))
-            workspaces[wsIndex].sessions.insert(session, at: destination)
+            workspaces[wsIndex].insertSession(session, atFlat: destination)
         } else {
-            workspaces[wsIndex].sessions.append(session)
+            workspaces[wsIndex].appendSession(session)
         }
         // ahead of the selection, so a consumer hears of the session before it hears it was selected
         emitSessionCreated(session, workspace: workspaceID)
@@ -541,7 +541,7 @@ public final class AppStore {
         let workspace = workspaces[location.workspaceIndex]
         let removed = workspace.sessions[location.sessionIndex]
         releaseLeavingSession(removed)
-        workspaces[location.workspaceIndex].sessions.remove(at: location.sessionIndex)
+        workspaces[location.workspaceIndex].removeSession(id: sessionID)
         emitSessionClosed(removed, workspace: workspace.id)
         dropLaunchPanes([removed])
         recordRecentClosedSession(removed, workspaceID: workspace.id, workspaceName: workspace.name,
@@ -621,14 +621,14 @@ public final class AppStore {
     public func moveSession(_ sessionID: UUID, toWorkspace targetID: UUID, at index: Int? = nil) {
         guard let source = location(ofSession: sessionID) else { return }
         guard let targetIndex = workspaces.firstIndex(where: { $0.id == targetID }) else { return }
-        let before = workspaces.map { $0.sessions.map(\.id) }
+        let before = workspaces.map(\.itemShape)
 
-        let session = workspaces[source.workspaceIndex].sessions.remove(at: source.sessionIndex)
+        guard let session = workspaces[source.workspaceIndex].removeSession(id: sessionID) else { return }
         let destination = max(0, min(index ?? workspaces[targetIndex].sessions.count, workspaces[targetIndex].sessions.count))
-        workspaces[targetIndex].sessions.insert(session, at: destination)
+        workspaces[targetIndex].insertSession(session, atFlat: destination)
         if sessionID == selectedSessionID { disableFocusIfSelectionOutsideSet(sessionID) }
         pruneSidebarSelection()
-        if before != workspaces.map({ $0.sessions.map(\.id) }) { scheduleTreeChanged() }
+        if before != workspaces.map(\.itemShape) { scheduleTreeChanged() }
         save()
     }
 
@@ -639,7 +639,7 @@ public final class AppStore {
     @discardableResult
     public func moveSessions(_ sessionIDs: [UUID], toWorkspace targetID: UUID, at index: Int? = nil) -> Int {
         guard workspaces.contains(where: { $0.id == targetID }) else { return 0 }
-        let before = workspaces.map { $0.sessions.map(\.id) }
+        let before = workspaces.map(\.itemShape)
         var movingIDs = orderedSessionIDs(matching: Set(sessionIDs))
         // a one-element batch stays wire-equivalent to `moveSession`, so only multi-selection filters
         if index == nil, movingIDs.count > 1 {
@@ -650,7 +650,7 @@ public final class AppStore {
         var moving: [Session] = []
         for id in movingIDs {
             guard let location = location(ofSession: id) else { continue }
-            moving.append(workspaces[location.workspaceIndex].sessions.remove(at: location.sessionIndex))
+            if let session = workspaces[location.workspaceIndex].removeSession(id: id) { moving.append(session) }
         }
         guard let targetIndex = workspaces.firstIndex(where: { $0.id == targetID }), !moving.isEmpty else {
             pruneSidebarSelection()
@@ -658,10 +658,12 @@ public final class AppStore {
         }
         let destination = max(0, min(index ?? workspaces[targetIndex].sessions.count,
                                      workspaces[targetIndex].sessions.count))
-        workspaces[targetIndex].sessions.insert(contentsOf: moving, at: destination)
+        for (offset, session) in moving.enumerated() {
+            workspaces[targetIndex].insertSession(session, atFlat: destination + offset)
+        }
         if let selectedSessionID, movingIDs.contains(selectedSessionID) { disableFocusIfSelectionOutsideSet(selectedSessionID) }
         pruneSidebarSelection()
-        if before != workspaces.map({ $0.sessions.map(\.id) }) { scheduleTreeChanged() }
+        if before != workspaces.map(\.itemShape) { scheduleTreeChanged() }
         save()
         return moving.count
     }
@@ -892,15 +894,15 @@ public final class AppStore {
         // repeated session id, else the rest stay unreachable past the first match and get re-saved.
         var seenSessionIDs: Set<UUID> = []
         workspaces = snapshot.workspaces.reduce(into: [Workspace]()) { restored, workspaceSnapshot in
-            let sessions = workspaceSnapshot.sessions
-                .filter { seenSessionIDs.insert($0.id).inserted }
-                .map { session(from: $0, launchRestore: launchRestore) }
+            let items = workspaceItems(from: workspaceSnapshot.items, launchRestore: launchRestore) {
+                seenSessionIDs.insert($0).inserted
+            }
             if let existing = restored.firstIndex(where: { $0.id == workspaceSnapshot.id }) {
-                restored[existing].sessions.append(contentsOf: sessions)
+                restored[existing].items.append(contentsOf: items)
                 return
             }
             // absent/nil collapsed → expanded (back-compat with snapshots written before the field existed).
-            restored.append(Workspace(id: workspaceSnapshot.id, name: workspaceSnapshot.name, sessions: sessions,
+            restored.append(Workspace(id: workspaceSnapshot.id, name: workspaceSnapshot.name, items: items,
                                       isExpanded: !(workspaceSnapshot.collapsed ?? false)))
         }
         // clamp on restore (not just nil-default) so a corrupt or hand-edited snapshot can't drive an

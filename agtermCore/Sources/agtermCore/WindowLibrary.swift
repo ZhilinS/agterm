@@ -455,9 +455,9 @@ public final class WindowLibrary {
     private func stripCaptures(from snapshot: Snapshot, into persistence: PersistenceStore) -> Bool {
         var stripped = snapshot
         for workspaceIndex in stripped.workspaces.indices {
-            for sessionIndex in stripped.workspaces[workspaceIndex].sessions.indices {
-                stripped.workspaces[workspaceIndex].sessions[sessionIndex].foregroundCommand = nil
-                stripped.workspaces[workspaceIndex].sessions[sessionIndex].splitForegroundCommand = nil
+            stripped.workspaces[workspaceIndex].mapSessions { session in
+                session.foregroundCommand = nil
+                session.splitForegroundCommand = nil
             }
         }
         do {
@@ -580,8 +580,9 @@ public final class WindowLibrary {
         var snapshot = persistence.load()
         var changed = false
         for w in snapshot.workspaces.indices {
-            for s in snapshot.workspaces[w].sessions.indices where snapshot.workspaces[w].sessions[s].fontSize != nil {
-                snapshot.workspaces[w].sessions[s].fontSize = nil
+            snapshot.workspaces[w].mapSessions { session in
+                guard session.fontSize != nil else { return }
+                session.fontSize = nil
                 changed = true
             }
         }

@@ -59,9 +59,17 @@ extension AppStore {
     /// Recent Closed record. Only a collapsed workspace writes the flag, so an all-expanded tree matches a
     /// legacy snapshot.
     func workspaceSnapshot(_ workspace: Workspace) -> WorkspaceSnapshot {
-        WorkspaceSnapshot(id: workspace.id, name: workspace.name,
-                          sessions: workspace.sessions.filter(\.isPersistable).map(sessionSnapshot),
-                          collapsed: workspace.isExpanded ? nil : true)
+        let items = workspace.items.compactMap { item -> WorkspaceItemSnapshot? in
+            switch item {
+            case .session(let session):
+                session.isPersistable ? .session(sessionSnapshot(session)) : nil
+            case .folder(let folder):
+                .folder(FolderSnapshot(id: folder.id, name: folder.name, collapsed: folder.isExpanded ? nil : true,
+                                       sessions: folder.sessions.filter(\.isPersistable).map(sessionSnapshot)))
+            }
+        }
+        return WorkspaceSnapshot(id: workspace.id, name: workspace.name, items: items,
+                                 collapsed: workspace.isExpanded ? nil : true)
     }
 
     /// Rebuilds one session from its snapshot. `launchRestore` marks an APP-BOOTSTRAP restore, the only path
@@ -114,7 +122,22 @@ extension AppStore {
     }
 
     func workspace(from snapshot: WorkspaceSnapshot) -> Workspace {
-        Workspace(id: snapshot.id, name: snapshot.name, sessions: snapshot.sessions.map { session(from: $0) },
+        Workspace(id: snapshot.id, name: snapshot.name, items: workspaceItems(from: snapshot.items),
                   isExpanded: !(snapshot.collapsed ?? false))
+    }
+
+    /// Rebuilds items, dropping sessions `keep` rejects; a folder stays even when it ends up empty.
+    func workspaceItems(from items: [WorkspaceItemSnapshot], launchRestore: Bool = false,
+                        keep: (UUID) -> Bool = { _ in true }) -> [WorkspaceItem] {
+        items.compactMap { item in
+            switch item {
+            case .session(let snapshot):
+                keep(snapshot.id) ? .session(session(from: snapshot, launchRestore: launchRestore)) : nil
+            case .folder(let folder):
+                .folder(SessionFolder(id: folder.id, name: folder.name, isExpanded: !(folder.collapsed ?? false),
+                                      sessions: folder.sessions.filter { keep($0.id) }
+                                          .map { session(from: $0, launchRestore: launchRestore) }))
+            }
+        }
     }
 }

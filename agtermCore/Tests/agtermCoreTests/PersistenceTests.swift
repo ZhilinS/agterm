@@ -132,7 +132,7 @@ final class PersistenceTests {
     @Test func legacyFileWithRemovedKeysLoadsAndKeepsWorkspaces() throws {
         // removed keys from an older build must be ignored, not fail the load and wipe the tree.
         let id = UUID()
-        let json = #"{ "version": 1, "statusBarHidden": true, "titleBarHidden": true, "workspaces": [ { "id": "\#(id.uuidString)", "name": "work", "sessions": [] } ] }"#
+        let json = #"{ "version": 1, "statusBarHidden": true, "titleBarHidden": true, "workspaces": [ { "id": "\#(id.uuidString)", "name": "work", "items": [] } ] }"#
         try Data(json.utf8).write(to: fileURL)
         let loaded = store.load()
         #expect(loaded.workspaces.map(\.id) == [id])
@@ -171,7 +171,7 @@ final class PersistenceTests {
         // a file written before `flagged` existed has no key; it must decode rather than wipe the tree.
         let ws = UUID()
         let sid = UUID()
-        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(sid.uuidString)", "customName": null, "cwd": "/a" } ] } ] }"#
+        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "items": [ { "session": { "id": "\#(sid.uuidString)", "customName": null, "cwd": "/a" } } ] } ] }"#
         try Data(json.utf8).write(to: fileURL)
         let loaded = store.load()
         #expect(loaded.workspaces.map(\.id) == [ws])
@@ -219,7 +219,7 @@ final class PersistenceTests {
     @Test func legacySnapshotWithoutSidebarModeDecodesTree() throws {
         // a file written before `sidebarMode` existed has no key; it must decode rather than wipe the tree.
         let ws = UUID()
-        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [] } ] }"#
+        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "items": [] } ] }"#
         try Data(json.utf8).write(to: fileURL)
         let loaded = store.load()
         #expect(loaded.workspaces.map(\.id) == [ws])
@@ -236,7 +236,7 @@ final class PersistenceTests {
         let ws = UUID()
         let session = UUID()
         let tree = #""selectedSessionID": "\#(session.uuidString)", "workspaces": "# +
-            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ]"#
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "items": [ { "session": { "id": "\#(session.uuidString)", "cwd": "/a" } } ] } ]"#
         for bad in [#""sidebarMode": "hologram""#, #""sidebarMode": 42"#] {
             try Data(#"{ "version": 1, \#(bad), \#(tree) }"#.utf8).write(to: fileURL)
             let loaded = store.load()
@@ -266,7 +266,7 @@ final class PersistenceTests {
     @Test func legacySnapshotWithoutFocusedWorkspaceDecodesUnfocused() throws {
         // a file written before any focus key existed has neither; it must decode rather than wipe the tree.
         let ws = UUID()
-        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [] } ] }"#
+        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "items": [] } ] }"#
         try Data(json.utf8).write(to: fileURL)
         let loaded = store.load()
         #expect(loaded.workspaces.map(\.id) == [ws])
@@ -283,7 +283,7 @@ final class PersistenceTests {
         let ws = UUID()
         let json = #"""
         { "version": 1, "focusedWorkspaceID": "\#(ws.uuidString)",
-          "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [] } ] }
+          "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "items": [] } ] }
         """#
         try Data(json.utf8).write(to: fileURL)
         let loaded = store.load()
@@ -358,7 +358,7 @@ final class PersistenceTests {
         let ws = UUID()
         let session = UUID()
         let tree = #""selectedSessionID": "\#(session.uuidString)", "workspaces": "# +
-            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ]"#
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "items": [ { "session": { "id": "\#(session.uuidString)", "cwd": "/a" } } ] } ]"#
         for bad in [#""sessionRecency": ["not-a-uuid"]"#, #""sessionRecency": 42"#] {
             try Data(#"{ "version": 1, \#(bad), \#(tree) }"#.utf8).write(to: fileURL)
             let loaded = store.load()
@@ -372,7 +372,7 @@ final class PersistenceTests {
         let ws = UUID()
         let session = UUID()
         let tree = #""selectedSessionID": "\#(session.uuidString)", "workspaces": "# +
-            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ]"#
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "items": [ { "session": { "id": "\#(session.uuidString)", "cwd": "/a" } } ] } ]"#
         for bad in [#""focusedWorkspaceIDs": ["not-a-uuid"]"#, #""focusedWorkspaceIDs": 42"#] {
             try Data(#"{ "version": 1, \#(bad), \#(tree) }"#.utf8).write(to: fileURL)
             let loaded = store.load()
@@ -386,7 +386,7 @@ final class PersistenceTests {
         let ws = UUID()
         let session = UUID()
         let tree = #""workspaces": "# +
-            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ]"#
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "items": [ { "session": { "id": "\#(session.uuidString)", "cwd": "/a" } } ] } ]"#
         // each bad value pairs with the field it must have nilled: a guard that recovered to a wrong
         // non-nil default would keep the tree alive and pass a tree-only assertion.
         let cases: [(bad: String, nilled: (Snapshot) -> Bool)] = [
@@ -413,14 +413,14 @@ final class PersistenceTests {
                     #""restoreCommand": []"#, #""splitCwd": 3"#, #""splitForegroundCommand": "vim""#,
                     #""initialCommand": ["vim"]"#, #""splitRestoreCommand": 0"#,
                     #""backgroundWatermark": "none""#] {
-            let tree = #""workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": "# +
-                #"[ { "id": "\#(session.uuidString)", "cwd": "/a", \#(bad) } ] } ]"#
+            let tree = #""workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "items": "# +
+                #"[ { "session": { "id": "\#(session.uuidString)", "cwd": "/a", \#(bad) } } ] } ]"#
             try Data(#"{ "version": 1, \#(tree) }"#.utf8).write(to: fileURL)
             let loaded = store.load()
             #expect(loaded.workspaces.first?.sessions.map(\.id) == [session], "\(bad) wiped the tree")
         }
         let tree = #""workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "collapsed": "yes", "# +
-            #""sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ]"#
+            #""items": [ { "session": { "id": "\#(session.uuidString)", "cwd": "/a" } } ] } ]"#
         try Data(#"{ "version": 1, \#(tree) }"#.utf8).write(to: fileURL)
         let loaded = store.load()
         #expect(loaded.workspaces.map(\.id) == [ws])
@@ -434,7 +434,7 @@ final class PersistenceTests {
         let session = UUID()
         let legacy = UUID()
         let tree = #""workspaces": "# +
-            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ]"#
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "items": [ { "session": { "id": "\#(session.uuidString)", "cwd": "/a" } } ] } ]"#
         let keys = #""focusedWorkspaceID": "\#(legacy.uuidString)", "focusedWorkspaceIDs": 42, "focusEnabled": false"#
         try Data(#"{ "version": 1, \#(keys), \#(tree) }"#.utf8).write(to: fileURL)
         let loaded = store.load()
@@ -465,7 +465,7 @@ final class PersistenceTests {
         let ws = UUID()
         let session = UUID()
         let json = #"{ "version": 1, "selectedSessionID": "\#(session.uuidString)", "workspaces": "# +
-            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ] }"#
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "items": [ { "session": { "id": "\#(session.uuidString)", "cwd": "/a" } } ] } ] }"#
         try Data(json.utf8).write(to: fileURL)
         let loaded = store.load()
         #expect(loaded.sessionRecency == nil)
@@ -509,7 +509,7 @@ final class PersistenceTests {
         let ws = UUID()
         let session = UUID()
         let json = #"{ "version": 1, "workspaces": "# +
-            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ] }"#
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "items": [ { "session": { "id": "\#(session.uuidString)", "cwd": "/a" } } ] } ] }"#
         try Data(json.utf8).write(to: fileURL)
         let loaded = store.load()
         #expect(loaded.workspaces.map(\.id) == [ws])
@@ -526,7 +526,7 @@ final class PersistenceTests {
         let ws = UUID()
         let session = UUID()
         let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "# +
-            #""collapsed": false, "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ] }"#
+            #""collapsed": false, "items": [ { "session": { "id": "\#(session.uuidString)", "cwd": "/a" } } ] } ] }"#
         try Data(json.utf8).write(to: fileURL)
         let loaded = store.load()
         #expect(loaded.workspaces[0].collapsed == false)

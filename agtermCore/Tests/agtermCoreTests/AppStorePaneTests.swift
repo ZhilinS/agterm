@@ -1945,7 +1945,7 @@ struct AppStorePaneTests {
     @Test func hidingAShownSplitDropsOnlyTheSplitKey() throws {
         let (store, log) = droppingStore()
         let session = Session(initialCwd: "/tmp")
-        store.workspaces[0].sessions.append(session)
+        store.workspaces[0].appendSession(session)
         store.setSplitVisibility(session.id, shown: true)
         let split = try #require(session.splitPaneIdentity)
 
@@ -1959,7 +1959,7 @@ struct AppStorePaneTests {
         let session = Session(initialCwd: "/tmp")
         session.hasSplit = true
         session.splitPaneIdentity = UUID()
-        store.workspaces[0].sessions.append(session)
+        store.workspaces[0].appendSession(session)
 
         store.setSplitVisibility(session.id, shown: false)
         store.setSplitVisibility(session.id, shown: true)
@@ -1970,7 +1970,7 @@ struct AppStorePaneTests {
     @Test func closingASplitDropsItsKey() throws {
         let (store, log) = droppingStore()
         let session = Session(initialCwd: "/tmp")
-        store.workspaces[0].sessions.append(session)
+        store.workspaces[0].appendSession(session)
         store.setSplitVisibility(session.id, shown: true)
         let split = try #require(session.splitPaneIdentity)
         log.identities = []

@@ -95,7 +95,7 @@ extension AppStore {
         let session = workspace.sessions[location.sessionIndex]
         releaseLeavingSession(session)
         closeTimedHud(session)
-        workspaces[location.workspaceIndex].sessions.remove(at: location.sessionIndex)
+        workspaces[location.workspaceIndex].removeSession(id: sessionID)
         emitSessionClosed(session, workspace: workspace.id)
         dropLaunchPanes([session])
         // undo reinserts THIS object, so an override armed at bootstrap and never consumed would survive the
@@ -163,11 +163,10 @@ extension AppStore {
         let removingActive = previousSelection.map { targetIDs.contains($0) } ?? false
         for close in closes.sorted(by: pendingSessionRemovalSort) {
             guard workspaces.indices.contains(close.workspaceIndex),
-                  workspaces[close.workspaceIndex].sessions.indices.contains(close.sessionIndex),
-                  workspaces[close.workspaceIndex].sessions[close.sessionIndex].id == close.session.id else { continue }
+                  workspaces[close.workspaceIndex].sessions.contains(where: { $0.id == close.session.id }) else { continue }
             releaseLeavingSession(close.session)
             closeTimedHud(close.session)
-            _ = workspaces[close.workspaceIndex].sessions.remove(at: close.sessionIndex)
+            workspaces[close.workspaceIndex].removeSession(id: close.session.id)
         }
         dropLaunchPanes(closes.map(\.session))
         for close in closes {
@@ -322,7 +321,7 @@ extension AppStore {
                     return true
                 }
                 var workspace = close.workspace
-                workspace.sessions.removeAll { $0.id == sessionID }
+                workspace.removeSession(id: sessionID)
                 let selected = close.selectedSessionID == sessionID ? nil : close.selectedSessionID
                 pendingCloseRecords[id] = .workspace(PendingWorkspaceClose(
                     workspace: workspace, workspaceIndex: close.workspaceIndex, selectedSessionID: selected,
@@ -396,7 +395,7 @@ extension AppStore {
             pendingCloseRecords.removeValue(forKey: closeID)
             pendingCloseTasks.removeValue(forKey: closeID)?.cancel()
             let present = Set(folded.sessions.map(\.id))
-            folded.sessions.append(contentsOf: close.workspace.sessions.filter { !present.contains($0.id) })
+            for session in close.workspace.sessions where !present.contains(session.id) { folded.appendSession(session) }
             focusMember = focusMember || close.focusMember
         }
         pendingCloseOrder.removeAll { pendingCloseRecords[$0] == nil }
@@ -454,7 +453,7 @@ extension AppStore {
             workspaceIndex = insertAt
         }
         let insertAt = max(0, min(close.sessionIndex, workspaces[workspaceIndex].sessions.count))
-        workspaces[workspaceIndex].sessions.insert(close.session, at: insertAt)
+        workspaces[workspaceIndex].insertSession(close.session, atFlat: insertAt)
         // the deck's `dropUnrealizedPaneOverlays` watchers are unmounted while the session sits outside the
         // tree, and `.onChange` does not fire on the remount, so the last host of a pane overlay can go away
         // unobserved: the zoom layer clears a target whose session it can no longer resolve, and a stillborn
@@ -494,7 +493,7 @@ extension AppStore {
         if let existing = workspaces.firstIndex(where: { $0.id == close.workspace.id }) {
             let live = Set(workspaces.flatMap(\.sessions).map(\.id))
             let restored = close.workspace.sessions.filter { !live.contains($0.id) }
-            workspaces[existing].sessions.append(contentsOf: restored)
+            for session in restored { workspaces[existing].appendSession(session) }
             for session in restored {
                 session.dropUnrealizedPaneOverlays() // reinserted live objects, as in `restorePendingSession`
                 emitSessionCreated(session, workspace: workspaces[existing].id)
