@@ -68,4 +68,46 @@ struct WorkspaceItemsTests {
         workspace.insertSession(session("z"), inFolder: UUID())
         #expect(shape(workspace) == "a F(x b c y) d E()")
     }
+
+    @Test(arguments: [
+        ("a", true, "a x F(b c) d E()"),
+        ("a", false, "x a F(b c) d E()"),
+        ("b", false, "a F(x b c) d E()"),
+        ("c", true, "a F(b c x) d E()"),
+        ("d", true, "a F(b c) d x E()"),
+    ])
+    func anchoredInsertStaysInTheAnchorsContainer(anchor: String, after: Bool, expected: String) throws {
+        var workspace = fixture()
+        let id = try #require(workspace.sessions.first { $0.customName == anchor }).id
+        let inserted = workspace.insertSession(session("x"), anchor: after ? .after(id) : .before(id))
+        #expect(inserted)
+        #expect(shape(workspace) == expected)
+    }
+
+    @Test func aPlacementPutsASessionBackInItsFolderOrWhereTheFolderStood() throws {
+        var workspace = fixture()
+        let c = workspace.sessions[2]
+        let placement = try #require(workspace.placement(ofSession: c.id))
+        #expect(placement == SessionPlacement(folderID: workspace.folders[0].id, folderSlot: 1, itemIndex: 1))
+        workspace.removeSession(id: c.id)
+        workspace.insertSession(c, at: placement)
+        #expect(shape(workspace) == "a F(b c) d E()")
+
+        workspace.removeSession(id: c.id)
+        let b = workspace.sessions[1]
+        workspace.removeSession(id: b.id)
+        workspace.removeFolder(id: workspace.folders[0].id)
+        workspace.insertSession(c, at: placement)
+        #expect(shape(workspace) == "a c d E()")
+    }
+
+    @Test func droppingAnEarlierMemberShiftsLaterPlacements() {
+        let folder = UUID()
+        let inFolder = SessionPlacement(folderID: folder, folderSlot: 2, itemIndex: 3)
+        #expect(inFolder.shifted(afterDropping: SessionPlacement(folderID: folder, folderSlot: 0, itemIndex: 3))
+            == SessionPlacement(folderID: folder, folderSlot: 1, itemIndex: 3))
+        #expect(inFolder.shifted(afterDropping: SessionPlacement(itemIndex: 1))
+            == SessionPlacement(folderID: folder, folderSlot: 2, itemIndex: 2))
+        #expect(SessionPlacement(itemIndex: 1).shifted(afterDropping: SessionPlacement(itemIndex: 4)) == SessionPlacement(itemIndex: 1))
+    }
 }

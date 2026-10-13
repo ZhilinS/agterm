@@ -10,9 +10,9 @@ extension AppStore {
     /// Returns nil if no session matches. Backs the sidebar row's "Duplicate" and `session.duplicate`.
     @discardableResult
     public func duplicateSession(_ id: UUID) -> Session? {
-        guard let session = session(withID: id), let location = sessionLocation(ofSession: id) else { return nil }
+        guard let session = session(withID: id), let workspace = workspace(forSession: id) else { return nil }
         let cwd = session.localWorkingDirectory(reported: session.focusedCwd,
                                                 homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)
-        return addSession(toWorkspace: location.workspace, cwd: cwd, at: location.index + 1)
+        return addSession(toWorkspace: workspace.id, cwd: cwd, anchor: .after(id))
     }
 }

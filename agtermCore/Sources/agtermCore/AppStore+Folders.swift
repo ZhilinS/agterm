@@ -95,6 +95,23 @@ extension AppStore {
         return moving.sessions.count
     }
 
+    /// Moves sessions, in tree order, beside `anchor` in the anchor's container; the anchor itself never moves.
+    @discardableResult
+    public func moveSessions(_ sessionIDs: [UUID], anchor: SessionAnchor) -> Int {
+        let anchorID = switch anchor {
+        case .after(let id), .before(let id): id
+        }
+        guard let target = workspaces.firstIndex(where: { $0.sessions.contains { $0.id == anchorID } }) else { return 0 }
+        let moving = removeForMove(sessionIDs.filter { $0 != anchorID })
+        var next = anchor
+        for session in moving.sessions {
+            workspaces[target].insertSession(session, anchor: next)
+            if case .after = anchor { next = .after(session.id) }
+        }
+        finishMove(moving)
+        return moving.sessions.count
+    }
+
     /// Moves sessions, in tree order, into a folder of any workspace: all are removed first, then the block
     /// lands at `index` of the folder's post-removal list, nil appends. Returns the count moved.
     @discardableResult

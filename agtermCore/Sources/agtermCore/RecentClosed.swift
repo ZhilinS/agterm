@@ -43,14 +43,17 @@ public struct RecentClosedSession: Codable, Equatable, Sendable {
     public let workspaceIndex: Int
     public let sessionIndex: Int
     public let snapshot: SessionSnapshot
+    /// Optional so an entry written before folders still decodes; nil falls back to `sessionIndex`.
+    public let placement: SessionPlacement?
 
     public init(workspaceID: UUID, workspaceName: String, workspaceIndex: Int, sessionIndex: Int,
-                snapshot: SessionSnapshot) {
+                snapshot: SessionSnapshot, placement: SessionPlacement? = nil) {
         self.workspaceID = workspaceID
         self.workspaceName = workspaceName
         self.workspaceIndex = workspaceIndex
         self.sessionIndex = sessionIndex
         self.snapshot = snapshot
+        self.placement = placement
     }
 }
 

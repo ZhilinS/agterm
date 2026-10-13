@@ -890,11 +890,11 @@ final class ControlServer {
     /// `--after`/`--before` slot (clamped in `AppStore`), nil appends; `options.noSelect` creates in the
     /// background, selection and focus untouched.
     func makeSessionResponse(in store: AppStore, workspaceID: UUID,
-                             options: ControlSessionCreateOptions, at index: Int? = nil) -> ControlResponse {
+                             options: ControlSessionCreateOptions, anchor: SessionAnchor? = nil) -> ControlResponse {
         let cwd = options.cwd ?? FileManager.default.homeDirectoryForCurrentUser.path
         guard let session = store.addSession(toWorkspace: workspaceID, cwd: cwd,
                                              command: options.command, name: options.name,
-                                             wait: options.wait ?? false, at: index, select: !options.noSelect) else {
+                                             wait: options.wait ?? false, anchor: anchor, select: !options.noSelect) else {
             return ControlResponse(ok: false, error: "could not create session")
         }
         if !options.noSelect, store === library.activeStore { actions.focusActiveSession() }

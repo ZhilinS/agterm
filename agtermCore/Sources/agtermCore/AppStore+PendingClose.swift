@@ -31,6 +31,7 @@ struct PendingSessionClose {
     let workspaceName: String
     let workspaceIndex: Int
     let sessionIndex: Int
+    let placement: SessionPlacement?
     let recentID: UUID
 }
 
@@ -109,6 +110,7 @@ extension AppStore {
             workspaceName: workspace.name,
             workspaceIndex: location.workspaceIndex,
             sessionIndex: location.sessionIndex,
+            placement: workspace.placement(ofSession: sessionID),
             recentID: closeID
         )
         pendingCloseRecords[closeID] = .sessions(PendingSessionsClose(
@@ -118,7 +120,7 @@ extension AppStore {
         pendingCloseOrder.append(closeID)
         recordRecentClosedSession(session, workspaceID: workspace.id, workspaceName: workspace.name,
                                   workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex,
-                                  id: closeID)
+                                  placement: close.placement, id: closeID)
         if wasActive {
             selectedSessionID = closeReselectionTarget(after: location)
             replaceSidebarSelection(with: selectedSessionID)
@@ -152,6 +154,7 @@ extension AppStore {
                     workspaceName: workspace.name,
                     workspaceIndex: workspaceIndex,
                     sessionIndex: sessionIndex,
+                    placement: workspace.placement(ofSession: session.id),
                     recentID: UUID()
                 ))
             }
@@ -172,7 +175,7 @@ extension AppStore {
         for close in closes {
             recordRecentClosedSession(close.session, workspaceID: close.workspaceID, workspaceName: close.workspaceName,
                                       workspaceIndex: close.workspaceIndex, sessionIndex: close.sessionIndex,
-                                      id: close.recentID)
+                                      placement: close.placement, id: close.recentID)
             emitSessionClosed(close.session, workspace: close.workspaceID)
         }
         if removingActive {
@@ -302,10 +305,14 @@ extension AppStore {
                 guard let member = close.sessions.first(where: { $0.session.id == sessionID }) else { continue }
                 // a survivor after the dropped member in the same workspace was saved one slot too far down
                 let rest = close.sessions.filter { $0.session.id != sessionID }.map { other in
-                    guard other.workspaceID == member.workspaceID, other.sessionIndex > member.sessionIndex else { return other }
+                    guard other.workspaceID == member.workspaceID else { return other }
+                    let placement = member.placement.flatMap { gone in other.placement?.shifted(afterDropping: gone) }
+                        ?? other.placement
                     return PendingSessionClose(
                         session: other.session, workspaceID: other.workspaceID, workspaceName: other.workspaceName,
-                        workspaceIndex: other.workspaceIndex, sessionIndex: other.sessionIndex - 1, recentID: other.recentID)
+                        workspaceIndex: other.workspaceIndex,
+                        sessionIndex: other.sessionIndex > member.sessionIndex ? other.sessionIndex - 1 : other.sessionIndex,
+                        placement: placement, recentID: other.recentID)
                 }
                 guard !rest.isEmpty else {
                     finalizePendingClose(id)
@@ -452,8 +459,12 @@ extension AppStore {
             workspaces.insert(rebuiltWorkspaceShell(id: close.workspaceID, name: close.workspaceName), at: insertAt)
             workspaceIndex = insertAt
         }
-        let insertAt = max(0, min(close.sessionIndex, workspaces[workspaceIndex].sessions.count))
-        workspaces[workspaceIndex].insertSession(close.session, atFlat: insertAt)
+        if let placement = close.placement {
+            workspaces[workspaceIndex].insertSession(close.session, at: placement)
+        } else {
+            workspaces[workspaceIndex].insertSession(close.session,
+                                                     atFlat: max(0, min(close.sessionIndex, workspaces[workspaceIndex].sessions.count)))
+        }
         // the deck's `dropUnrealizedPaneOverlays` watchers are unmounted while the session sits outside the
         // tree, and `.onChange` does not fire on the remount, so the last host of a pane overlay can go away
         // unobserved: the zoom layer clears a target whose session it can no longer resolve, and a stillborn

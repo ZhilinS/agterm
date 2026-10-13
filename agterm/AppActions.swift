@@ -117,7 +117,7 @@ final class AppActions {
         guard uiActionsEnabled else { return }
         guard let store, let workspaceID = store.currentWorkspaceID,
               let session = store.addSession(toWorkspace: workspaceID, cwd: resolvedNewSessionCwd(),
-                                             at: resolvedNewSessionIndex(in: workspaceID, store: store))
+                                             anchor: resolvedNewSessionAnchor(in: workspaceID, store: store))
         else { return }
         // note activity so the new session buys the full idle grace before auto-follow moves the selection.
         store.noteUserActivity()
@@ -134,10 +134,10 @@ final class AppActions {
         return settingsModel?.settings.resolveNewSessionCwd(currentSessionCwd: current, home: home) ?? home
     }
 
-    /// resolvedNewSessionIndex applies the placement setting to the supplied store's tree; nil appends.
-    func resolvedNewSessionIndex(in workspaceID: UUID, store: AppStore) -> Int? {
-        store.newSessionInsertionIndex(inWorkspace: workspaceID,
-                                       placement: settingsModel?.settings.effectiveNewSessionPlacement ?? .end)
+    /// resolvedNewSessionAnchor applies the placement setting to the supplied store's tree; nil appends.
+    func resolvedNewSessionAnchor(in workspaceID: UUID, store: AppStore) -> SessionAnchor? {
+        store.newSessionAnchor(inWorkspace: workspaceID,
+                               placement: settingsModel?.settings.effectiveNewSessionPlacement ?? .end)
     }
 
     func openDirectory() {

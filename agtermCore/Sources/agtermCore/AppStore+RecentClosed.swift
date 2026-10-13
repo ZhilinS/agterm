@@ -30,8 +30,11 @@ extension AppStore {
                 index = insertAt
             }
             let session = session(from: recent.snapshot)
-            let insertAt = max(0, min(recent.sessionIndex, workspaces[index].sessions.count))
-            workspaces[index].insertSession(session, atFlat: insertAt)
+            if let placement = recent.placement {
+                workspaces[index].insertSession(session, at: placement)
+            } else {
+                workspaces[index].insertSession(session, atFlat: max(0, min(recent.sessionIndex, workspaces[index].sessions.count)))
+            }
             emitSessionCreated(session, workspace: workspaces[index].id)
             selectedSessionID = session.id
             replaceSidebarSelection(with: selectedSessionID)
@@ -189,6 +192,7 @@ extension AppStore {
                                    workspaceName: String,
                                    workspaceIndex: Int,
                                    sessionIndex: Int,
+                                   placement: SessionPlacement?,
                                    id: UUID = UUID()) -> UUID? {
         guard let recentClosedStore, session.isPersistable else { return nil }
         recentClosedStore.record(RecentClosedItem(
@@ -200,7 +204,7 @@ extension AppStore {
                                          workspaceName: workspaceName,
                                          workspaceIndex: workspaceIndex,
                                          sessionIndex: sessionIndex,
-                                         snapshot: sessionSnapshot(session))
+                                         snapshot: sessionSnapshot(session), placement: placement)
         ))
         recentClosedDidChange?()
         return id

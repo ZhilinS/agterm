@@ -371,12 +371,12 @@ extension WorkspaceSidebar.Coordinator {
     /// with the workspace row's New Session and "+".
     private func addNewSession(toWorkspace workspaceID: UUID) {
         addSession(toWorkspace: workspaceID, cwd: actions.resolvedNewSessionCwd(),
-                   at: actions.resolvedNewSessionIndex(in: workspaceID, store: store))
+                   anchor: actions.resolvedNewSessionAnchor(in: workspaceID, store: store))
     }
 
-    /// Adds a session to `workspaceID` at `cwd`, or at the end of `folder`, and selects it; a nil `index` appends.
-    private func addSession(toWorkspace workspaceID: UUID, cwd: String, at index: Int? = nil, folder: UUID? = nil) {
-        if let session = store.addSession(toWorkspace: workspaceID, cwd: cwd, at: index) {
+    /// Adds a session to `workspaceID` at `cwd`, beside `anchor` or at the end of `folder`, and selects it.
+    private func addSession(toWorkspace workspaceID: UUID, cwd: String, anchor: SessionAnchor? = nil, folder: UUID? = nil) {
+        if let session = store.addSession(toWorkspace: workspaceID, cwd: cwd, anchor: anchor) {
             if let folder { store.moveSessions([session.id], toFolder: folder) }
             // creating + selecting from the sidebar context menu is a user-initiated selection on THIS
             // window's store: note activity so it buys the full idle grace before auto-follow pulls away.

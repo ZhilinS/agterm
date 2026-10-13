@@ -18,6 +18,35 @@ public struct SessionFolder: Identifiable {
     public var unseenCount: Int { sessions.reduce(0) { $0 + $1.unseenCount } }
 }
 
+/// Where a session sat, to put it back: its folder slot while that folder exists, else its `items` slot, which
+/// for a folder member is the folder's own.
+public struct SessionPlacement: Codable, Equatable, Sendable {
+    public var folderID: UUID?
+    public var folderSlot: Int?
+    public var itemIndex: Int
+
+    public init(folderID: UUID? = nil, folderSlot: Int? = nil, itemIndex: Int) {
+        self.folderID = folderID
+        self.folderSlot = folderSlot
+        self.itemIndex = itemIndex
+    }
+
+    /// This placement once `removed`, recorded alongside it, will never be put back.
+    public func shifted(afterDropping removed: SessionPlacement) -> SessionPlacement {
+        var copy = self
+        if removed.folderID == nil, removed.itemIndex < itemIndex { copy.itemIndex -= 1 }
+        if let folderID, folderID == removed.folderID, let slot = folderSlot, let gone = removed.folderSlot, gone < slot {
+            copy.folderSlot = slot - 1
+        }
+        return copy
+    }
+}
+
+public enum SessionAnchor: Equatable, Sendable {
+    case after(UUID)
+    case before(UUID)
+}
+
 @MainActor
 public enum WorkspaceItem {
     case session(Session)
@@ -137,6 +166,49 @@ public struct Workspace: Identifiable {
     /// Inserts loose at a clamped `items` slot, which can sit before a folder where a flat index cannot.
     public mutating func insertSession(_ session: Session, atItem slot: Int) {
         items.insert(.session(session), at: max(0, min(slot, items.count)))
+    }
+
+    public mutating func insertSession(_ session: Session, after anchorID: UUID) -> Bool {
+        insertSession(session, beside: anchorID, offset: 1)
+    }
+
+    public mutating func insertSession(_ session: Session, before anchorID: UUID) -> Bool {
+        insertSession(session, beside: anchorID, offset: 0)
+    }
+
+    /// A sibling of the anchor in the anchor's own container; false, inserting nothing, when it is absent.
+    @discardableResult
+    public mutating func insertSession(_ session: Session, anchor: SessionAnchor) -> Bool {
+        switch anchor {
+        case .after(let id): insertSession(session, after: id)
+        case .before(let id): insertSession(session, before: id)
+        }
+    }
+
+    private mutating func insertSession(_ session: Session, beside anchorID: UUID, offset: Int) -> Bool {
+        if let index = itemIndex(ofLooseSession: anchorID) {
+            items.insert(.session(session), at: index + offset)
+            return true
+        }
+        guard let folderID = container(ofSession: anchorID),
+              let slot = folder(withID: folderID)?.sessions.firstIndex(where: { $0.id == anchorID }) else { return false }
+        insertSession(session, inFolder: folderID, at: slot + offset)
+        return true
+    }
+
+    public func placement(ofSession sessionID: UUID) -> SessionPlacement? {
+        if let index = itemIndex(ofLooseSession: sessionID) { return SessionPlacement(itemIndex: index) }
+        guard let folderID = container(ofSession: sessionID), let index = itemIndex(ofFolder: folderID),
+              let slot = folder(withID: folderID)?.sessions.firstIndex(where: { $0.id == sessionID }) else { return nil }
+        return SessionPlacement(folderID: folderID, folderSlot: slot, itemIndex: index)
+    }
+
+    public mutating func insertSession(_ session: Session, at placement: SessionPlacement) {
+        if let folderID = placement.folderID, folder(withID: folderID) != nil {
+            insertSession(session, inFolder: folderID, at: placement.folderSlot)
+        } else {
+            insertSession(session, atItem: placement.itemIndex)
+        }
     }
 
     /// Inserts into the folder at a clamped slot; no-op on an unknown folder.

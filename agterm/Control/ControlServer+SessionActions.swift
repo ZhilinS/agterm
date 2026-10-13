@@ -227,13 +227,13 @@ extension ControlServer: ControlActions {
     /// name, there is nothing to create by id. cwd/command/name are applied in `makeSessionResponse`.
     func createSession(_ options: ControlSessionCreateOptions) -> ControlResponse {
         resolver.resolvePlacementStore(options.window) { store in
-            // anchor-relative placement: the anchor names its own workspace, bypassing `--workspace`/
-            // `--workspace-name`. `before` takes the anchor's slot, `after` the next (clamped in `addSession`).
+            // anchor-relative placement: the anchor names its own workspace and container, bypassing
+            // `--workspace`/`--workspace-name`.
             if let anchor = options.after ?? options.before {
                 let placeBefore = options.before != nil
-                return resolveAnchorLocation(anchor, in: store) { location in
-                    let index = placeBefore ? location.index : location.index + 1
-                    return makeSessionResponse(in: store, workspaceID: location.workspace, options: options, at: index)
+                return resolveAnchorLocation(anchor, in: store) { anchorID, location in
+                    makeSessionResponse(in: store, workspaceID: location.workspace, options: options,
+                                        anchor: placeBefore ? .before(anchorID) : .after(anchorID))
                 }
             }
             // name addressing: reuse-or-create with `createWorkspace`, else require an existing match.
@@ -264,13 +264,13 @@ extension ControlServer: ControlActions {
     /// hand its `(workspace, index, count)` to `body`. Unresolved/ambiguous yields the shared resolver
     /// error; the location guard is defense-in-depth — the id came from the store's own list.
     private func resolveAnchorLocation(_ anchor: String, in store: AppStore,
-                                       _ body: ((workspace: UUID, index: Int, count: Int)) -> ControlResponse) -> ControlResponse {
+                                       _ body: (UUID, (workspace: UUID, index: Int, count: Int)) -> ControlResponse) -> ControlResponse {
         resolver.resolve(anchor, candidates: store.workspaces.flatMap { $0.sessions.map(\.id) },
                        active: store.selectedSessionID, noun: "session") { anchorID in
             guard let location = store.sessionLocation(ofSession: anchorID) else {
                 return ControlResponse(ok: false, error: "no such session")
             }
-            return body(location)
+            return body(anchorID, location)
         }
     }
 
@@ -690,51 +690,27 @@ extension ControlServer: ControlActions {
         }
     }
 
-    /// Resolve the moved session and its anchor in one store, then relocate + position via the host-free
-    /// `SidebarDrop.resolveRelative` math. A nil resolution (anchor==self, already in place) is a no-op.
+    /// Moves the session beside its anchor, in the anchor's workspace and folder.
     private func placeSession(_ target: String?, window: String?, anchor: String, after: Bool) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, sessionID in
-            guard let source = store.sessionLocation(ofSession: sessionID) else {
+            guard store.session(withID: sessionID) != nil else {
                 return ControlResponse(ok: false, error: "no such session")
             }
-            return resolveAnchorLocation(anchor, in: store) { anchorLoc in
-                if let resolution = SidebarDrop.resolveRelative(
-                    source: (workspace: source.workspace, index: source.index),
-                    anchor: (workspace: anchorLoc.workspace, index: anchorLoc.index, count: anchorLoc.count),
-                    placeAfter: after) {
-                    store.moveSession(sessionID, toWorkspace: resolution.workspace, at: resolution.destination)
-                }
+            return resolveAnchorLocation(anchor, in: store) { anchorID, _ in
+                store.moveSessions([sessionID], anchor: after ? .after(anchorID) : .before(anchorID))
                 return ControlResponse(ok: true, result: ControlResult(id: sessionID.uuidString))
             }
         }
     }
 
-    /// Batch variant of `placeSession`: compute the post-removal insertion slot with the same host-free
-    /// drop math as sidebar drag, then move the block with one `AppStore.moveSessions` call.
+    /// Batch variant of `placeSession`: the block lands beside the anchor in tree order.
     private func placeSessions(_ targets: [String], window: String?, anchor: String, after: Bool) -> ControlResponse {
         resolveBatchSessions(targets, window: window) { store, ids in
-            let sources = ids.compactMap { id -> SidebarDrop.SessionSource? in
-                guard let source = store.sessionLocation(ofSession: id) else { return nil }
-                return SidebarDrop.SessionSource(workspace: source.workspace, index: source.index)
-            }
-            guard sources.count == ids.count else {
+            guard ids.allSatisfy({ store.session(withID: $0) != nil }) else {
                 return ControlResponse(ok: false, error: "no such session")
             }
-            return resolveAnchorLocation(anchor, in: store) { anchorLoc in
-                let target = SidebarDrop.SessionDropTarget.sessionRow(workspace: anchorLoc.workspace,
-                                                                      sessionIndex: anchorLoc.index,
-                                                                      sessionCount: anchorLoc.count)
-                let affected: Int
-                if let resolution = SidebarDrop.resolveSessions(
-                    sources: sources,
-                    target: target,
-                    childIndex: after ? SidebarDrop.onItemIndex : anchorLoc.index
-                ) {
-                    affected = store.moveSessions(ids, toWorkspace: resolution.workspace,
-                                                  at: resolution.destination)
-                } else {
-                    affected = 0
-                }
+            return resolveAnchorLocation(anchor, in: store) { anchorID, _ in
+                let affected = store.moveSessions(ids, anchor: after ? .after(anchorID) : .before(anchorID))
                 return ControlResponse(ok: true, result: ControlResult(affected: affected))
             }
         }

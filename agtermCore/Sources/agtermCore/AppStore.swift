@@ -457,13 +457,13 @@ public final class AppStore {
 
     /// Creates a session in the given workspace and selects it when `select` (the default); `select: false`
     /// appends it in the background, leaving selection/focus/recency untouched (`session.new --no-select`).
-    /// `name` seeds `customName` (trimmed; blank = the auto basename, matching `renameSession`). `at` nil
-    /// appends, else inserts at the clamped index (`0...count`), backing `--after`/`--before`. Nil if no
-    /// workspace matches.
+    /// `name` seeds `customName` (trimmed; blank = the auto basename, matching `renameSession`). `anchor` puts it
+    /// beside that session in its container (`--after`/`--before`), else `at` inserts at the clamped flat index,
+    /// else it appends. Nil if no workspace matches.
     @discardableResult
     public func addSession(toWorkspace workspaceID: UUID, cwd: String, command: String? = nil,
-                           name: String? = nil, wait: Bool = false, at index: Int? = nil, select: Bool = true,
-                           remoteHost: String? = nil) -> Session? {
+                           name: String? = nil, wait: Bool = false, at index: Int? = nil, anchor: SessionAnchor? = nil,
+                           select: Bool = true, remoteHost: String? = nil) -> Session? {
         guard let wsIndex = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
         // both reach a custom command's expansion — cwd through initialCwd, name through customName — so
         // both are sanitized here. See TerminalText.
@@ -473,10 +473,10 @@ public final class AppStore {
                               remoteHost: remoteHost)
         session.initialCommand = command
         session.commandWait = wait
-        if let index {
-            let destination = max(0, min(index, workspaces[wsIndex].sessions.count))
-            workspaces[wsIndex].insertSession(session, atFlat: destination)
-        } else {
+        let anchored = anchor.map { workspaces[wsIndex].insertSession(session, anchor: $0) } ?? false
+        if !anchored, let index {
+            workspaces[wsIndex].insertSession(session, atFlat: max(0, min(index, workspaces[wsIndex].sessions.count)))
+        } else if !anchored {
             workspaces[wsIndex].appendSession(session)
         }
         // ahead of the selection, so a consumer hears of the session before it hears it was selected
@@ -548,7 +548,8 @@ public final class AppStore {
         emitSessionClosed(removed, workspace: workspace.id)
         dropLaunchPanes([removed])
         recordRecentClosedSession(removed, workspaceID: workspace.id, workspaceName: workspace.name,
-                                  workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex)
+                                  workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex,
+                                  placement: workspace.placement(ofSession: sessionID))
         finalizePaneIdentities([removed], alreadyFinalized: alreadyFinalized)
         removed.surface?.teardown()
         removed.splitSurface?.teardown()

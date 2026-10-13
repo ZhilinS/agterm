@@ -102,4 +102,60 @@ struct AppStoreFolderTests {
         #expect(store.containerLocation(ofSession: s[0].id)?.index == 0)
         #expect(store.containerLocation(ofSession: s[1].id).map { [$0.index, $0.count] } == [2, 3])
     }
+
+    @Test func duplicateLandsBesideTheSourceInItsContainer() throws {
+        let (store, ws, s) = try fixture()
+        store.addFolder(toWorkspace: ws, name: "F", containing: [s[1].id])
+        let afterLoose = try #require(store.duplicateSession(s[0].id))
+        afterLoose.customName = "a2"
+        let afterLast = try #require(store.duplicateSession(s[1].id))
+        afterLast.customName = "b2"
+        #expect(shapeOf(store, ws) == "a a2 F(b b2) c")
+    }
+
+    @Test func anchoredMovesKeepTheBlockOrderBesideTheAnchor() throws {
+        let (store, ws, s) = try fixture()
+        store.addFolder(toWorkspace: ws, name: "F", containing: [s[1].id])
+        #expect(store.moveSessions([s[2].id, s[0].id], anchor: .after(s[1].id)) == 2)
+        #expect(shapeOf(store, ws) == "F(b a c)")
+        #expect(store.moveSessions([s[0].id, s[2].id, s[1].id], anchor: .before(s[1].id)) == 2)
+        #expect(shapeOf(store, ws) == "F(a c b)")
+    }
+
+    @Test func afterCurrentNewSessionAnchorsOnTheSelection() throws {
+        let (store, ws, s) = try fixture()
+        store.selectSession(s[0].id)
+        #expect(store.newSessionAnchor(inWorkspace: ws, placement: .afterCurrent) == .after(s[0].id))
+        #expect(store.newSessionAnchor(inWorkspace: ws, placement: .end) == nil)
+    }
+
+    @Test(arguments: [false, true])
+    func reopenAfterACascadeDeleteLandsLooseWhereTheFolderStood(softClose: Bool) throws {
+        let (store, recent, _) = makeStoreWithRecentClosed()
+        let ws = store.addWorkspace(name: "w")
+        let a = try #require(store.addSession(toWorkspace: ws.id, cwd: "/", name: "a"))
+        let b = try #require(store.addSession(toWorkspace: ws.id, cwd: "/", name: "b"))
+        let f = try #require(store.addFolder(toWorkspace: ws.id, name: "F", containing: [a.id]))
+        store.addFolder(toWorkspace: ws.id, name: "G", containing: [b.id])
+        if softClose {
+            store.softCloseSession(a.id)
+            store.finalizePendingClose(ofSession: a.id)
+        } else {
+            store.closeSession(a.id)
+        }
+        store.deleteFolder(f.id)
+        let item = try #require(recent.load().first { $0.session?.snapshot.id == a.id })
+        #expect(store.restoreRecentClosed(item))
+        #expect(shapeOf(store, ws.id) == "a G(b)")
+    }
+
+    @Test func undoPutsASoftClosedFolderMemberBackInItsSlot() throws {
+        let (store, ws, s) = try fixture()
+        store.addFolder(toWorkspace: ws, name: "F", containing: s.map(\.id))
+        #expect(store.softCloseSessions([s[0].id, s[2].id]))
+        #expect(shapeOf(store, ws) == "F(b)")
+        let pending = try #require(store.pendingCloseSummary?.id)
+        #expect(store.undoPendingClose(pending))
+        #expect(shapeOf(store, ws) == "F(a b c)")
+    }
 }

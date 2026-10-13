@@ -10,4 +10,11 @@ extension AppStore {
               location.workspace == workspaceID else { return nil }
         return location.index + 1
     }
+
+    /// The folder-aware form of `newSessionInsertionIndex`: a sibling right after the selection.
+    public func newSessionAnchor(inWorkspace workspaceID: UUID, placement: AppSettings.NewSessionPlacement) -> SessionAnchor? {
+        guard newSessionInsertionIndex(inWorkspace: workspaceID, placement: placement) != nil,
+              let selectedSessionID else { return nil }
+        return .after(selectedSessionID)
+    }
 }
