@@ -26,8 +26,8 @@ interleaved in any order. A workspace is a repo, a folder is a branch or a task.
   workspace's folder is a cross-workspace move landing inside that folder.
 - Drag and drop: session rows drop onto or between rows inside a folder, or out of it to the workspace
   level. Spring-loaded expansion works on folder rows like on workspace rows.
-- Persistence: survives relaunch; an upstream snapshot loads unchanged; a snapshot without folders is
-  byte-identical to today's.
+- Persistence: survives relaunch. The file format changes (`items` replaces `sessions`); an upstream
+  snapshot is not read.
 - Control API read-back: `tree` session nodes gain `folder: <name>` when inside one. Nothing else.
 
 Out of scope, second iteration: dragging folder rows (reorder, across workspaces), undo that restores the
@@ -95,17 +95,16 @@ public struct Workspace {
 
 ```swift
 // WorkspaceSnapshot
-public var sessions: [SessionSnapshot]        // unchanged: the flat preorder, what upstream reads
-public var items: [WorkspaceItemSnapshot]?    // only written when the workspace has a folder
-// WorkspaceItemSnapshot: {"session": "<uuid>"} | {"folder": {"id", "name", "collapsed"?, "sessions": [uuid]}}
+public var items: [WorkspaceItemSnapshot]     // required; replaces `sessions`
+// WorkspaceItemSnapshot: {"session": SessionSnapshot}
+//                      | {"folder": {"id", "name", "collapsed"?, "sessions": [SessionSnapshot]}}
 ```
 
-- `sessions` keeps being written in full, so an upstream build reads the file and shows a flat list.
-- `items` references sessions by id and is lossy-decoded like `collapsed`. On load, `items == nil` means
-  every session loose in array order; an id in `items` with no session in `sessions` is dropped, a session
-  missing from `items` is appended loose. That is the only reconciliation, and it runs on load only,
-  because at runtime there is one list.
-- A workspace without folders encodes byte-identically to today's file.
+- No `sessions` key, no legacy branch, no migration. A file written by an upstream build fails to decode
+  and `PersistenceStore.load` returns an empty tree, same as a version mismatch today. Accepted: the
+  fork never shares a state directory with an upstream build.
+- `collapsed` on a folder is lossy and inverse of `isExpanded`, like the workspace one.
+- Existing snapshot tests that pin exact JSON are updated to the new shape.
 
 ## Sidebar (app target)
 
@@ -163,9 +162,8 @@ multi-select close path, so pending-close undo and recent-closed work for the se
 
 - `agtermCore` (`swift test`): `WorkspaceItemsTests` table-tests `insertSession(atFlat:)` across
   folder boundaries, `removeSession`, and that `sessions` equals the preorder; `AppStoreFolderTests` cover
-  every mutator including cross-workspace move into a folder; `SnapshotFolderTests` pin byte-identical
-  encoding without folders, round trip with them, lossy decode, an upstream-shaped file loading loose, and
-  the load-time drop/append of stray ids; `SidebarDropTests` gains the folder target cases. The existing
+  every mutator including cross-workspace move into a folder; `SnapshotFolderTests` pin the round trip with and
+  without folders and the lossy `collapsed` decode; `SidebarDropTests` gains the folder target cases. The existing
   store suites are the regression net for the 16 write-site swaps.
 - Hosted (`make test-app`): one `SidebarFolderUITests` with create-from-session, rename, drop into
   folder, drop out, delete with cascade. Run only that class while iterating.
