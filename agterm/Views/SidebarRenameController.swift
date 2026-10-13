@@ -114,6 +114,7 @@ final class SidebarRenameController: NSObject, NSTextFieldDelegate {
         switch node.kind {
         case .session: store.renameSession(node.id, to: newValue)
         case .workspace: store.renameWorkspace(node.id, to: newValue)
+        case .folder: store.renameFolder(node.id, to: newValue)
         }
     }
 
@@ -126,7 +127,12 @@ final class SidebarRenameController: NSObject, NSTextFieldDelegate {
         field.isEditable = false
         field.isBordered = false
         field.drawsBackground = false
-        field.setAccessibilityIdentifier(kind == .workspace ? "workspace-row" : "session-row")
+        let identifier = switch kind {
+        case .workspace: "workspace-row"
+        case .folder: "folder-row"
+        default: "session-row"
+        }
+        field.setAccessibilityIdentifier(identifier)
         // restore the row's selection-aware themed color so a commit that didn't change the name (no
         // reload) doesn't leave beginEditing's edit-box color stuck on the row. read the hosting row view's
         // live isSelected — the state the selection pill draws from — rather than recomputing via

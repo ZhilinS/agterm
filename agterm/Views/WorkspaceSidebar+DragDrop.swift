@@ -22,6 +22,8 @@ extension WorkspaceSidebar.Coordinator {
             pbItem.setString(draggedIDs.map(\.uuidString).joined(separator: "\n"), forType: sessionPasteboardType)
         case .workspace:
             pbItem.setString(node.id.uuidString, forType: workspacePasteboardType)
+        case .folder:
+            return nil
         }
         return pbItem
     }
@@ -42,16 +44,16 @@ extension WorkspaceSidebar.Coordinator {
                 cancelSpringLoadedExpansion()
                 return []
             }
-            outlineView.setDropItem(workspaceNode(forID: move.workspace), dropChildIndex: move.dropChildIndex)
-            scheduleSpringLoadedExpansion(of: move.workspace, in: outlineView)
+            outlineView.setDropItem(cachedNode(move.folder ?? move.workspace), dropChildIndex: move.dropChildIndex)
+            scheduleSpringLoadedExpansion(of: move.folder ?? move.workspace, in: outlineView)
             return .move
         }
         guard let drop = resolveDirectoryDrop(from: info, item: item) else {
             cancelSpringLoadedExpansion()
             return []
         }
-        outlineView.setDropItem(workspaceNode(forID: drop.workspaceID), dropChildIndex: SidebarDrop.onItemIndex)
-        scheduleSpringLoadedExpansion(of: drop.workspaceID, in: outlineView)
+        outlineView.setDropItem(cachedNode(drop.folderID ?? drop.workspaceID), dropChildIndex: SidebarDrop.onItemIndex)
+        scheduleSpringLoadedExpansion(of: drop.folderID ?? drop.workspaceID, in: outlineView)
         return .copy
     }
 
@@ -72,7 +74,11 @@ extension WorkspaceSidebar.Coordinator {
         }
         if !draggedSessionIDs(from: info).isEmpty {
             guard let move = resolveSessionMove(from: info, item: item, childIndex: index) else { return false }
-            store.moveSessions(move.sessionIDs, toWorkspace: move.workspace, at: move.destination)
+            if let folder = move.folder {
+                store.moveSessions(move.sessionIDs, toFolder: folder, at: move.destination)
+            } else {
+                store.moveSessions(move.sessionIDs, toWorkspace: move.workspace, atItem: move.destination)
+            }
             dropSucceeded = true
             return true
         }
@@ -83,7 +89,9 @@ extension WorkspaceSidebar.Coordinator {
         }
         var created = false
         for url in drop.urls {
-            created = store.addSession(toWorkspace: drop.workspaceID, cwd: url.path) != nil || created
+            guard let session = store.addSession(toWorkspace: drop.workspaceID, cwd: url.path) else { continue }
+            if let folder = drop.folderID { store.moveSessions([session.id], toFolder: folder) }
+            created = true
         }
         guard created else { return false }
         store.noteUserActivity()
@@ -105,6 +113,7 @@ extension WorkspaceSidebar.Coordinator {
     private struct DirectoryDrop {
         let urls: [URL]
         let workspaceID: UUID
+        let folderID: UUID?
         let exceedsLimit: Bool
     }
 
@@ -113,6 +122,7 @@ extension WorkspaceSidebar.Coordinator {
     private struct SessionMove {
         let sessionIDs: [UUID]
         let workspace: UUID
+        let folder: UUID?
         let dropChildIndex: Int
         let destination: Int
     }
@@ -128,21 +138,24 @@ extension WorkspaceSidebar.Coordinator {
         let target: SidebarDrop.SessionDropTarget
         switch node.kind {
         case .workspace:
-            let count = store.workspaces.first(where: { $0.id == node.id })?.sessions.count ?? 0
+            let count = store.workspaces.first(where: { $0.id == node.id })?.items.count ?? 0
             target = .workspaceRow(id: node.id, sessionCount: count)
+        case .folder:
+            guard let workspace = store.workspace(forFolder: node.id), let folder = workspace.folder(withID: node.id) else { return nil }
+            target = .folderRow(workspace: workspace.id, folder: folder.id, sessionCount: folder.sessions.count)
         case .session:
-            guard let drop = store.sessionLocation(ofSession: node.id) else { return nil }
-            target = .sessionRow(workspace: drop.workspace, sessionIndex: drop.index, sessionCount: drop.count)
+            guard let drop = store.containerLocation(ofSession: node.id) else { return nil }
+            target = .sessionRow(workspace: drop.workspace, folder: drop.folder, sessionIndex: drop.index, sessionCount: drop.count)
         }
 
         let sources = sessionIDs.compactMap { id -> SidebarDrop.SessionSource? in
-            guard let source = store.sessionLocation(ofSession: id) else { return nil }
-            return SidebarDrop.SessionSource(workspace: source.workspace, index: source.index)
+            guard let source = store.containerLocation(ofSession: id) else { return nil }
+            return SidebarDrop.SessionSource(workspace: source.workspace, folder: source.folder, index: source.index)
         }
         guard sources.count == sessionIDs.count,
               let move = SidebarDrop.resolveSessions(sources: sources, target: target, childIndex: index)
         else { return nil }
-        return SessionMove(sessionIDs: sessionIDs, workspace: move.workspace,
+        return SessionMove(sessionIDs: sessionIDs, workspace: move.workspace, folder: move.folder,
                            dropChildIndex: move.dropChildIndex, destination: move.destination)
     }
 
@@ -158,7 +171,8 @@ extension WorkspaceSidebar.Coordinator {
                   fallbackWorkspaceID: store.soleFocusedWorkspaceID,
                   currentWorkspaceID: store.currentWorkspaceID)
         else { return nil }
-        return DirectoryDrop(urls: resolved.urls, workspaceID: workspaceID,
+        let folderID = (item as? SidebarNode).flatMap { $0.kind == .folder ? $0.id : nil }
+        return DirectoryDrop(urls: resolved.urls, workspaceID: workspaceID, folderID: folderID,
                              exceedsLimit: resolved.exceedsLimit)
     }
 
@@ -167,6 +181,8 @@ extension WorkspaceSidebar.Coordinator {
         switch node.kind {
         case .workspace:
             return node.id
+        case .folder:
+            return store.workspace(forFolder: node.id)?.id
         case .session:
             return store.workspace(forSession: node.id)?.id
         }
@@ -197,8 +213,9 @@ extension WorkspaceSidebar.Coordinator {
         return (directories, exceedsLimit)
     }
 
+    /// `workspaceID` may name a folder row too; both spring-open the same way.
     private func scheduleSpringLoadedExpansion(of workspaceID: UUID, in outlineView: NSOutlineView) {
-        guard store.sidebarMode == .tree, let node = workspaceNode(forID: workspaceID) else {
+        guard store.sidebarMode == .tree, let node = cachedNode(workspaceID) else {
             cancelSpringLoadedExpansion()
             return
         }
@@ -210,7 +227,7 @@ extension WorkspaceSidebar.Coordinator {
         if pendingSpringLoadedExpansion?.workspaceID == workspaceID { return }
         cancelSpringLoadedExpansion()
         let workItem = DispatchWorkItem { [weak self, weak outlineView] in
-            guard let self, let outlineView, let node = self.workspaceNode(forID: workspaceID),
+            guard let self, let outlineView, let node = self.cachedNode(workspaceID),
                   !outlineView.isItemExpanded(node) else { return }
             self.springLoadedWorkspaceID = workspaceID
             self.suppressExpansionPersist = true
@@ -228,7 +245,7 @@ extension WorkspaceSidebar.Coordinator {
     func cancelSpringLoadedExpansion() {
         let workspaceID = springLoadedWorkspaceID
         clearSpringLoadedTracking()
-        guard let workspaceID, let outlineView, let node = workspaceNode(forID: workspaceID),
+        guard let workspaceID, let outlineView, let node = cachedNode(workspaceID),
               outlineView.isItemExpanded(node) else { return }
         suppressExpansionPersist = true
         outlineView.collapseItem(node)

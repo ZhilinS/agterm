@@ -27,7 +27,12 @@ extension WorkspaceSidebar.Coordinator {
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? SidebarNode else { return nil }
-        let identifier = NSUserInterfaceItemIdentifier(node.kind == .workspace ? "workspace-cell" : "session-cell")
+        let cellName = switch node.kind {
+        case .workspace: "workspace-cell"
+        case .folder: "folder-cell"
+        case .session: "session-cell"
+        }
+        let identifier = NSUserInterfaceItemIdentifier(cellName)
         let cell = (outlineView.makeView(withIdentifier: identifier, owner: self) as? SidebarCellView) ?? makeCell(identifier: identifier)
 
         let field = cell.textField!
@@ -59,6 +64,17 @@ extension WorkspaceSidebar.Coordinator {
             cell.imageView?.image = store.focusedWorkspaceIDs.contains(node.id) ? focusedWorkspaceIcon : workspaceIcon
             cell.imageView?.toolTip = nil
             cell.imageView?.setAccessibilityIdentifier("workspace-icon")
+        case .folder:
+            let folder = store.folder(withID: node.id)
+            cell.statusIcon.apply(AgentIndicator())
+            field.stringValue = folder?.name ?? ""
+            field.font = .systemFont(ofSize: GhosttyApp.shared.sidebarFontSize)
+            field.setAccessibilityIdentifier("folder-row")
+            field.setAccessibilityLabel(folder?.name ?? "")
+            applyBadge(toCell: cell, count: effectiveUnseen(folder?.unseenCount ?? 0))
+            cell.imageView?.image = folderIcon
+            cell.imageView?.toolTip = nil
+            cell.imageView?.setAccessibilityIdentifier("folder-icon")
         case .session:
             field.stringValue = rowLabel(forSession: node.id)
             field.font = .systemFont(ofSize: GhosttyApp.shared.sidebarFontSize)

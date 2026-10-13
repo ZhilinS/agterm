@@ -69,7 +69,7 @@ public struct Workspace: Identifiable {
     public var unseenCount: Int { sessions.reduce(0) { $0 + $1.unseenCount } }
 
     /// Item order with folder membership, for change detection a flat id list cannot see.
-    var itemShape: [[UUID]] {
+    public var itemShape: [[UUID]] {
         items.map { item in
             switch item {
             case .session(let session): [session.id]

@@ -126,7 +126,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         weak var outlineView: NSOutlineView?
 
         /// Root workspace nodes in store order, rebuilt from the store on each reload from cached instances.
-        private var roots: [SidebarNode] = []
+        private(set) var roots: [SidebarNode] = []
         /// Cache of node instances keyed by id, so identity is stable across reloads.
         private var nodeCache: [UUID: SidebarNode] = [:]
         /// Guards `syncSelection` against re-entering the store via the selection-change callback it fires.
@@ -141,7 +141,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// so the mount's own rebuild counts as rendered. A change to either swaps the whole data source.
         private var lastMode: SidebarMode = .tree
         private var lastFlaggedLayout: FlaggedViewLayout?
-        /// Workspace ids the user has expanded, tracked via the expand/collapse callbacks. The source of
+        /// Workspace and folder ids the user has expanded, tracked via the expand/collapse callbacks. The source of
         /// truth for restoring expansion on rebuild: NSOutlineView discards its own expansion state for
         /// items it no longer renders: the flat flagged list drops every workspace node, and the flagged tree
         /// drops the ones holding nothing flagged.
@@ -153,7 +153,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// over empty and a guard would skip the push, leaving the PREVIOUS mount's ids in the store while
         /// the outline shows every row folded. The store field is `@ObservationIgnored`, so a redundant
         /// push costs one set copy and invalidates nothing.
-        private var expandedWorkspaceIDs = Set<UUID>() {
+        private(set) var expandedWorkspaceIDs = Set<UUID>() {
             didSet { store.noteSidebarExpansion(expandedWorkspaceIDs) }
         }
         /// Set true around PROGRAMMATIC `expandItem`/`collapseItem` (the launch/rebuild re-apply, the
@@ -361,7 +361,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// here: a cwd-driven `displayName` change must not `reloadData` + re-expand, which jitters labels.
         private struct TreeShape: Equatable {
             let workspaceID: UUID
-            let sessionIDs: [UUID]
+            let items: [[UUID]]
         }
 
         /// A row's visible content: label (workspace name or session `displayName`), split-rectangle icon,
@@ -423,9 +423,12 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// `visibleWorkspaces`, so marking a workspace or flipping the focus filter counts as a shape change too.
         private func currentShape() -> [TreeShape] {
             guard rendersWorkspaceRows else {
-                return [TreeShape(workspaceID: Self.flaggedShapeID, sessionIDs: store.flaggedSessions.map(\.id))]
+                return [TreeShape(workspaceID: Self.flaggedShapeID, items: [store.flaggedSessions.map(\.id)])]
             }
-            return workspaceProjection.map { TreeShape(workspaceID: $0.workspace.id, sessionIDs: $0.sessions.map(\.id)) }
+            return workspaceProjection.map { projected in
+                TreeShape(workspaceID: projected.workspace.id, items: store.sidebarMode == .tree
+                    ? projected.workspace.itemShape : projected.sessions.map { [$0.id] })
+            }
         }
 
         /// Updates only the rows whose visible content changed — the session row and, for a badge roll-up,
@@ -444,6 +447,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
             }
             for workspace in store.workspaces {
                 reloadIfChanged(workspace.id, rowContent(forWorkspace: workspace))
+                for folder in workspace.folders { reloadIfChanged(folder.id, rowContent(forFolder: folder)) }
                 for session in workspace.sessions {
                     reloadIfChanged(session.id, rowContent(forSession: session, workspaceName: workspace.name))
                 }
@@ -467,6 +471,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
             var snapshot: [UUID: RowContent] = [:]
             for workspace in store.workspaces {
                 snapshot[workspace.id] = rowContent(forWorkspace: workspace)
+                for folder in workspace.folders { snapshot[folder.id] = rowContent(forFolder: folder) }
                 for session in workspace.sessions {
                     snapshot[session.id] = rowContent(forSession: session, workspaceName: workspace.name)
                 }
@@ -481,6 +486,11 @@ struct WorkspaceSidebar: NSViewRepresentable {
                        unseen: effectiveUnseen(displayedUnseen(for: workspace)),
                        indicator: AgentIndicator(), flagged: false,
                        focusMember: store.focusedWorkspaceIDs.contains(workspace.id))
+        }
+
+        private func rowContent(forFolder folder: SessionFolder) -> RowContent {
+            RowContent(label: folder.name, hasSplit: false, splitAxis: .leftRight, unseen: effectiveUnseen(folder.unseenCount),
+                       indicator: AgentIndicator(), flagged: false, focusMember: false)
         }
 
         /// The visible content of a session row. One builder shared by `reloadChangedContentRows` and
@@ -527,10 +537,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
             for (workspace, sessions) in workspaceProjection {
                 let wsNode = node(for: workspace.id, kind: .workspace)
                 seen.insert(workspace.id)
-                wsNode.children = sessions.map { session in
-                    seen.insert(session.id)
-                    return node(for: session.id, kind: .session)
-                }
+                wsNode.children = childNodes(of: workspace, projected: sessions, seen: &seen)
                 newRoots.append(wsNode)
             }
             nodeCache = nodeCache.filter { seen.contains($0.key) }
@@ -540,8 +547,9 @@ struct WorkspaceSidebar: NSViewRepresentable {
             // then pick up any the model reports expanded — a runtime-added workspace defaults
             // `isExpanded == true`, so it renders open, while a user-collapsed one and a reveal's
             // already-present id are undisturbed (formUnion only adds).
-            expandedWorkspaceIDs.formIntersection(Set(store.workspaces.map(\.id)))
-            expandedWorkspaceIDs.formUnion(store.workspaces.filter(\.isExpanded).map(\.id))
+            let folders = store.workspaces.flatMap(\.folders)
+            expandedWorkspaceIDs.formIntersection(Set(store.workspaces.map(\.id) + folders.map(\.id)))
+            expandedWorkspaceIDs.formUnion(store.workspaces.filter(\.isExpanded).map(\.id) + folders.filter(\.isExpanded).map(\.id))
 
             // restore expansion from the tracked set, not the live outline state, which forgets every
             // workspace a flagged-mode reload left out. A filter applied to a SINGLE marked workspace also force-expands it — a
@@ -556,6 +564,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
             let forceExpanded = store.sidebarMode == .tree ? store.soleFocusedWorkspaceID : nil
             for node in roots where expandedWorkspaceIDs.contains(node.id) || forceExpanded == node.id {
                 outline.expandItem(node)
+                restoreFolderExpansion(in: node)
             }
             suppressExpansionPersist = false
             updateEmptyState()
@@ -594,7 +603,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// Seeds the tracked expansion set from the persisted `Workspace.isExpanded`. Sets only the tracked
         /// set — `rebuildAndReload` applies it to the outline. Called once from `makeNSView`.
         func seedExpansionFromModel() {
-            expandedWorkspaceIDs = Set(store.workspaces.filter(\.isExpanded).map(\.id))
+            expandedWorkspaceIDs = Set(store.workspaces.filter(\.isExpanded).map(\.id)
+                + store.workspaces.flatMap(\.folders).filter(\.isExpanded).map(\.id))
         }
 
         /// Expands every workspace row — the "Expand Workspaces" user action. Seeds the tracked expansion
@@ -618,7 +628,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
             // this command targets ALL workspaces, not just the visible `roots`: reduce the tracked set to
             // exactly the active workspace, so a focus filter hiding some can't leave them in the set for
             // the batch write below to persist as expanded. The outline only touches on-screen rows.
-            if let keepID { expandedWorkspaceIDs = [keepID] } else { expandedWorkspaceIDs = [] }
+            let folderIDs = Set(store.workspaces.flatMap(\.folders).map(\.id))
+            expandedWorkspaceIDs = expandedWorkspaceIDs.intersection(folderIDs).union(keepID.map { [$0] } ?? [])
             suppressExpansionPersist = true
             for node in roots where node.kind == .workspace {
                 if node.id == keepID {
@@ -638,22 +649,25 @@ struct WorkspaceSidebar: NSViewRepresentable {
 
         func outlineViewItemDidExpand(_ notification: Notification) {
             guard let node = notification.userInfo?[Self.outlineItemUserInfoKey] as? SidebarNode,
-                  node.kind == .workspace else { return }
+                  node.kind != .session else { return }
             expandedWorkspaceIDs.insert(node.id)
             // persist ONLY a genuine user expand: a programmatic reveal or rebuild re-apply sets
             // suppressExpansionPersist, updating the visual set above without burning the persisted intent.
-            if !suppressExpansionPersist { store.setWorkspaceExpanded(node.id, expanded: true) }
+            if !suppressExpansionPersist { persistExpansion(of: node, expanded: true) }
+            if node.kind == .workspace { restoreFolderExpansion(in: node) }
         }
 
         func outlineViewItemDidCollapse(_ notification: Notification) {
             guard let node = notification.userInfo?[Self.outlineItemUserInfoKey] as? SidebarNode,
-                  node.kind == .workspace else { return }
+                  node.kind != .session else { return }
             expandedWorkspaceIDs.remove(node.id)
             // persist only a genuine user collapse; programmatic collapses are suppressed (see didExpand).
-            if !suppressExpansionPersist { store.setWorkspaceExpanded(node.id, expanded: false) }
+            if !suppressExpansionPersist { persistExpansion(of: node, expanded: false) }
         }
 
-        private func node(for id: UUID, kind: SidebarNode.Kind) -> SidebarNode {
+        func cachedNode(_ id: UUID) -> SidebarNode? { nodeCache[id] }
+
+        func node(for id: UUID, kind: SidebarNode.Kind) -> SidebarNode {
             if let existing = nodeCache[id] { return existing }
             let node = SidebarNode(kind: kind, id: id)
             nodeCache[id] = node
@@ -681,10 +695,12 @@ struct WorkspaceSidebar: NSViewRepresentable {
             // expanded; expand its owner first so the row resolves. A VIEW action, so suppress the persist:
             // navigating into a deliberately collapsed workspace shows the session without un-collapsing it
             // on disk.
-            if selectionChanged, let owner = ownerWorkspaceNode(ofSession: selectedID), !outline.isItemExpanded(owner) {
-                suppressExpansionPersist = true
-                outline.expandItem(owner)
-                suppressExpansionPersist = false
+            if selectionChanged {
+                for owner in ancestors(ofSession: selectedID) where !outline.isItemExpanded(owner) {
+                    suppressExpansionPersist = true
+                    outline.expandItem(owner)
+                    suppressExpansionPersist = false
+                }
             }
             var rows = IndexSet()
             let selectedIDs = store.sidebarSelectionIDs.isEmpty ? [selectedID] : store.sidebarSelectionIDs
@@ -703,11 +719,6 @@ struct WorkspaceSidebar: NSViewRepresentable {
                 outline.scrollRowToVisible(row)
             }
             lastRevealedSelection = selectedID
-        }
-
-        /// The workspace node whose `children` hold `sessionID` — used to expand a collapsed owner first.
-        private func ownerWorkspaceNode(ofSession sessionID: UUID) -> SidebarNode? {
-            roots.first { $0.children.contains { $0.id == sessionID } }
         }
 
         func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -779,7 +790,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
 
         func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
             guard let node = item as? SidebarNode else { return false }
-            return node.kind == .workspace
+            return node.kind != .session
         }
 
         /// Leading row icons as monochrome template symbols. A flagged SESSION swaps to its base glyph's
@@ -789,6 +800,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// badge, so each stays a single template `setColors` tints; the weight variant renders 1pt larger
         /// (16x15 vs 15x14) but the icon view is pinned to 16x16, so neither swap moves the row. Cached.
         lazy var workspaceIcon = Self.rowIcon("square.grid.2x2")
+        lazy var folderIcon = Self.rowIcon("folder")
         lazy var focusedWorkspaceIcon = Self.rowIcon("square.grid.2x2", weight: .black)
         lazy var splitSessionIcon = Self.rowIcon("rectangle.split.2x1")
         lazy var horizontalSplitSessionIcon = Self.rowIcon("rectangle.split.1x2")

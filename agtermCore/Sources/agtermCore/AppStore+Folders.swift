@@ -5,6 +5,10 @@ extension AppStore {
         workspaces.lazy.compactMap { $0.folder(withID: folderID) }.first
     }
 
+    public func workspace(forFolder folderID: UUID) -> Workspace? {
+        workspaceIndex(ofFolder: folderID).map { workspaces[$0] }
+    }
+
     func workspaceIndex(ofFolder folderID: UUID) -> Int? {
         workspaces.firstIndex { $0.folder(withID: folderID) != nil }
     }

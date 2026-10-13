@@ -290,11 +290,11 @@ final class SidebarRowView: NSTableRowView {
 /// identity (`===`) — nodes must be the SAME instances across reloads, never fresh structs. The coordinator
 /// caches one per workspace/session id and rebuilds only the child lists.
 final class SidebarNode {
-    enum Kind { case workspace, session }
+    enum Kind { case workspace, folder, session }
 
     let kind: Kind
     let id: UUID
-    /// Workspace child nodes, repopulated from the store on each rebuild. Empty for session nodes.
+    /// Workspace or folder child nodes, repopulated from the store on each rebuild. Empty for session nodes.
     var children: [SidebarNode] = []
 
     init(kind: Kind, id: UUID) {
