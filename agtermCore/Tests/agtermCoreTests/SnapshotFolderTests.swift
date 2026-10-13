@@ -51,4 +51,18 @@ struct SnapshotFolderTests {
         try Data(json.utf8).write(to: directory.appendingPathComponent("workspaces.json"))
         #expect(PersistenceStore(directory: directory).load().workspaces.isEmpty)
     }
+
+    @Test func mapSessionsReachesFolderMembersAndKeepsTheItems() {
+        let loose = SessionSnapshot(id: UUID(), customName: nil, cwd: "/a", fontSize: 12)
+        let member = SessionSnapshot(id: UUID(), customName: nil, cwd: "/b", fontSize: 14)
+        let folder = FolderSnapshot(id: UUID(), name: "F", collapsed: true, sessions: [member])
+        var workspace = WorkspaceSnapshot(id: UUID(), name: "w", items: [.session(loose), .folder(folder)])
+        workspace.mapSessions { $0.fontSize = nil }
+        #expect(workspace.sessions.map(\.fontSize) == [nil, nil])
+        guard case .folder(let mapped) = workspace.items.last else {
+            Issue.record("folder item lost")
+            return
+        }
+        #expect(mapped.id == folder.id && mapped.collapsed == true && mapped.sessions.map(\.id) == [member.id])
+    }
 }

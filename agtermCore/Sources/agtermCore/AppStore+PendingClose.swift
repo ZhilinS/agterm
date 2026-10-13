@@ -475,7 +475,7 @@ extension AppStore {
     }
 
     private func restorePendingSessions(_ close: PendingSessionsClose, selecting requestedSessionID: UUID?) {
-        for session in close.sessions {
+        for session in placedForRestore(close.sessions) {
             restorePendingSession(session)
         }
         let target = requestedSessionID.flatMap { id in close.sessions.contains { $0.session.id == id } ? id : nil }
@@ -486,6 +486,39 @@ extension AppStore {
             replaceSidebarSelection(with: selectedSessionID)
             disableFocusIfSelectionOutsideSet(selectedSessionID)
             recordRecency()
+        }
+    }
+
+    /// Members of a folder that is gone come back as one loose block where it stood, in their old order, and
+    /// later loose slots of that workspace move past the block. Every member recorded the folder's own slot,
+    /// so restoring them one by one there would reverse them.
+    private func placedForRestore(_ closes: [PendingSessionClose]) -> [PendingSessionClose] {
+        var blocks: [UUID: (workspace: UUID, itemIndex: Int, count: Int)] = [:]
+        for close in closes {
+            guard let folderID = close.placement?.folderID, folder(withID: folderID) == nil,
+                  let itemIndex = close.placement?.itemIndex else { continue }
+            blocks[folderID, default: (close.workspaceID, itemIndex, 0)].count += 1
+        }
+        guard !blocks.isEmpty else { return closes }
+        func grownBefore(_ itemIndex: Int, in workspace: UUID) -> Int {
+            blocks.values.filter { $0.workspace == workspace && $0.itemIndex < itemIndex }.reduce(0) { $0 + $1.count - 1 }
+        }
+        var taken: [UUID: Int] = [:]
+        return closes.map { close in
+            guard let placement = close.placement else { return close }
+            let itemIndex: Int
+            if let folderID = placement.folderID, blocks[folderID] != nil {
+                itemIndex = placement.itemIndex + grownBefore(placement.itemIndex, in: close.workspaceID) + taken[folderID, default: 0]
+                taken[folderID, default: 0] += 1
+            } else if placement.folderID == nil {
+                itemIndex = placement.itemIndex + grownBefore(placement.itemIndex, in: close.workspaceID)
+            } else {
+                return close
+            }
+            return PendingSessionClose(session: close.session, workspaceID: close.workspaceID,
+                                       workspaceName: close.workspaceName, workspaceIndex: close.workspaceIndex,
+                                       sessionIndex: close.sessionIndex, placement: SessionPlacement(itemIndex: itemIndex),
+                                       recentID: close.recentID)
         }
     }
 

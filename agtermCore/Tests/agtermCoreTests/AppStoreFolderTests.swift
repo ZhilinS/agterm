@@ -158,4 +158,39 @@ struct AppStoreFolderTests {
         #expect(store.undoPendingClose(pending))
         #expect(shapeOf(store, ws) == "F(a b c)")
     }
+
+    @Test func undoOfACascadeDeleteKeepsTheFolderOrderAndLaterLooseSlots() throws {
+        let (store, ws, s) = try fixture()
+        let x = try #require(store.addSession(toWorkspace: ws, cwd: "/", name: "x"))
+        let y = try #require(store.addSession(toWorkspace: ws, cwd: "/", name: "y"))
+        store.moveSessions([x.id], toWorkspace: ws, atItem: 0)
+        let folder = try #require(store.addFolder(toWorkspace: ws, name: "F", containing: s.map(\.id)))
+        #expect(shapeOf(store, ws) == "x F(a b c) y")
+        #expect(store.softCloseSessions(s.map(\.id) + [y.id]))
+        store.deleteFolder(folder.id)
+        #expect(store.undoPendingClose(try #require(store.pendingCloseSummary?.id)))
+        #expect(shapeOf(store, ws) == "x a b c y")
+    }
+
+    @Test func reopeningAHardClosedFolderMostRecentFirstKeepsItsOrder() throws {
+        let (store, recent, _) = makeStoreWithRecentClosed()
+        let ws = store.addWorkspace(name: "w")
+        let s = try ["a", "b", "c"].map { try #require(store.addSession(toWorkspace: ws.id, cwd: "/", name: $0)) }
+        let folder = try #require(store.addFolder(toWorkspace: ws.id, name: "F", containing: s.map(\.id)))
+        for session in s { store.closeSession(session.id) }
+        store.deleteFolder(folder.id)
+        for _ in s {
+            let item = try #require(recent.load().first { $0.kind == .session })
+            #expect(store.restoreRecentClosed(item))
+            recent.remove(item.id)
+        }
+        #expect(shapeOf(store, ws.id) == "a b c")
+    }
+
+    @Test func aSessionInsertsIntoAnEmptyFolder() throws {
+        let (store, ws, s) = try fixture()
+        let empty = try #require(store.addFolder(toWorkspace: ws, name: "E"))
+        #expect(store.moveSessions([s[1].id], toFolder: empty.id, at: 5) == 1)
+        #expect(shapeOf(store, ws) == "a c E(b)")
+    }
 }
