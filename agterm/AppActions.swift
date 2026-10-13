@@ -453,6 +453,25 @@ final class AppActions {
         }
     }
 
+    /// Delete a folder of `store`'s window: an empty one at once; otherwise, after the Delete Workspace confirm, its
+    /// sessions close through the multi-select close path and the emptied folder goes.
+    func deleteFolder(_ folderID: UUID, in store: AppStore) {
+        guard let folder = store.folder(withID: folderID) else { return }
+        let ids = folder.sessions.map(\.id)
+        if !ids.isEmpty {
+            guard confirmDelete(name: folder.name, sessionCount: ids.count) else { return }
+            withAnimation(.easeInOut(duration: 0.16)) {
+                if closeGraceUndoEnabled {
+                    _ = store.softCloseSessions(ids)
+                } else {
+                    for id in ids { store.closeSession(id) }
+                }
+            }
+        }
+        store.deleteFolder(folderID)
+        focusActiveSession()
+    }
+
     /// Delete the current workspace (where new sessions land) — the menu-bar/palette path, which has no
     /// clicked row and so acts on the frontmost window.
     func deleteActiveWorkspace() {
