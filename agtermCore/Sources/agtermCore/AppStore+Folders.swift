@@ -1,5 +1,12 @@
 import Foundation
 
+public struct SessionContainerLocation: Equatable, Sendable {
+    public let workspace: UUID
+    public let folder: UUID?
+    public let index: Int
+    public let count: Int
+}
+
 extension AppStore {
     public func folder(withID folderID: UUID) -> SessionFolder? {
         workspaces.lazy.compactMap { $0.folder(withID: folderID) }.first
@@ -65,14 +72,14 @@ extension AppStore {
     }
 
     /// The session's container and its slot there: a folder's session list, or the workspace's `items`.
-    public func containerLocation(ofSession id: UUID) -> (workspace: UUID, folder: UUID?, index: Int, count: Int)? {
+    public func containerLocation(ofSession id: UUID) -> SessionContainerLocation? {
         guard let workspace = workspace(forSession: id) else { return nil }
         if let folderID = workspace.container(ofSession: id), let folder = workspace.folder(withID: folderID),
            let slot = folder.sessions.firstIndex(where: { $0.id == id }) {
-            return (workspace.id, folderID, slot, folder.sessions.count)
+            return SessionContainerLocation(workspace: workspace.id, folder: folderID, index: slot, count: folder.sessions.count)
         }
         guard let slot = workspace.itemIndex(ofLooseSession: id) else { return nil }
-        return (workspace.id, nil, slot, workspace.items.count)
+        return SessionContainerLocation(workspace: workspace.id, folder: nil, index: slot, count: workspace.items.count)
     }
 
     /// The drop form of `moveSessions(_:toWorkspace:at:)`: the block lands loose at `slot` of the target's

@@ -65,7 +65,9 @@ public enum SidebarDrop {
     /// current slot (including appending an already-last session) is a no-op.
     public static func resolveSession(sourceWorkspace: UUID, sourceIndex: Int,
                                       target: SessionDropTarget, childIndex: Int) -> SessionResolution? {
-        let (workspace, folder, targetCount, dropChildIndex) = container(of: target, childIndex: childIndex)
+        let resolved = container(of: target, childIndex: childIndex)
+        let (workspace, folder, targetCount, dropChildIndex) = (resolved.workspace, resolved.folder, resolved.count,
+                                                                resolved.dropChildIndex)
 
         let sameWorkspace = sourceWorkspace == workspace && folder == nil
         var destination = dropChildIndex
@@ -85,15 +87,22 @@ public enum SidebarDrop {
                                  destination: destination)
     }
 
-    private static func container(of target: SessionDropTarget, childIndex: Int)
-        -> (workspace: UUID, folder: UUID?, count: Int, dropChildIndex: Int) {
+    private struct Container {
+        let workspace: UUID
+        let folder: UUID?
+        let count: Int
+        let dropChildIndex: Int
+    }
+
+    private static func container(of target: SessionDropTarget, childIndex: Int) -> Container {
         switch target {
         case let .workspaceRow(id, sessionCount):
-            (id, nil, sessionCount, childIndex)
+            Container(workspace: id, folder: nil, count: sessionCount, dropChildIndex: childIndex)
         case let .sessionRow(owner, folder, sessionIndex, sessionCount):
-            (owner, folder, sessionCount, childIndex == onItemIndex ? sessionIndex + 1 : childIndex)
+            Container(workspace: owner, folder: folder, count: sessionCount,
+                      dropChildIndex: childIndex == onItemIndex ? sessionIndex + 1 : childIndex)
         case let .folderRow(owner, folder, sessionCount):
-            (owner, folder, sessionCount, childIndex)
+            Container(workspace: owner, folder: folder, count: sessionCount, dropChildIndex: childIndex)
         }
     }
 
@@ -104,7 +113,9 @@ public enum SidebarDrop {
                                        target: SessionDropTarget,
                                        childIndex: Int) -> SessionResolution? {
         guard !sources.isEmpty else { return nil }
-        let (workspace, folder, targetCount, dropChildIndex) = container(of: target, childIndex: childIndex)
+        let resolved = container(of: target, childIndex: childIndex)
+        let (workspace, folder, targetCount, dropChildIndex) = (resolved.workspace, resolved.folder, resolved.count,
+                                                                resolved.dropChildIndex)
 
         let rawDestination = dropChildIndex == onItemIndex ? targetCount : dropChildIndex
         let sourceIndicesInTarget = sources.filter { $0.workspace == workspace && $0.folder == folder }.map(\.index).sorted()
