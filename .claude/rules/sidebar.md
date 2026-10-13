@@ -46,8 +46,10 @@ paths:
   is enabled.
 - A workspace-row click toggles expansion through the outline action, excluding the disclosure frame.
   Defer by `NSEvent.doubleClickInterval` and cancel on double-click so rename does not flicker through a
-  toggle. This click routing is keep-in-sync exempt. `GhosttyApp.workspaceRowClickExpands` (default on)
-  gates the whole-row target only; the disclosure triangle toggles natively and stays unconditional.
+  toggle. With the `renameOnDoubleClick` setting off, a workspace or folder double-click does not rename, so
+  the click toggles at once without the deferral. This click routing is keep-in-sync exempt.
+  `GhosttyApp.workspaceRowClickExpands` (default on) gates the whole-row target only; the disclosure
+  triangle toggles natively and stays unconditional.
   The deferred item re-reads that mirror when it fires, so turning the setting off inside the deferral
   window cancels the pending toggle. Route the row-click toggle through `outline.animator()` so it animates
   like the triangle; a bare `expandItem`/`collapseItem` silently drops the animation. Do not gate that on

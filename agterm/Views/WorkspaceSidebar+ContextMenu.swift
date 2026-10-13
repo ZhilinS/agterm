@@ -9,7 +9,8 @@ extension WorkspaceSidebar.Coordinator {
 
     /// Single click anywhere on a workspace row toggles its expansion, so the whole row is the hit target,
     /// not just the disclosure triangle. The toggle is DEFERRED by the double-click interval and cancelled
-    /// by `handleDoubleClick`, so renaming does not flip the row open/closed on the way into edit mode.
+    /// by `handleDoubleClick`, so renaming does not flip the row open/closed on the way into edit mode;
+    /// with `renameOnDoubleClick` off a double-click renames nothing, so the toggle runs at once.
     /// `action` fires on a genuine click, never during a drag, so workspace drag-reorder is unaffected.
     /// `workspaceRowClickExpands` gates the whole-row target only; the disclosure triangle keeps toggling.
     @objc func handleSingleClick(_ sender: NSOutlineView) {
@@ -26,6 +27,12 @@ extension WorkspaceSidebar.Coordinator {
                btn.convert(btn.bounds, to: sender).contains(point) { return }
         }
         pendingRowToggle?.cancel()
+        // without double-click rename there is nothing to wait for.
+        guard GhosttyApp.shared.renameOnDoubleClick else {
+            pendingRowToggle = nil
+            toggleExpansion(of: node, in: sender)
+            return
+        }
         // re-read the mirror when the deferred item fires: the setting can be turned off inside the
         // deferral window, and nothing else cancels an already-scheduled toggle.
         let toggle = DispatchWorkItem { [weak self, weak node] in
@@ -43,7 +50,8 @@ extension WorkspaceSidebar.Coordinator {
         pendingRowToggle?.cancel()
         pendingRowToggle = nil
         let row = sender.clickedRow
-        guard row >= 0, let node = sender.item(atRow: row) as? SidebarNode else { return }
+        guard row >= 0, let node = sender.item(atRow: row) as? SidebarNode,
+              node.kind == .session || GhosttyApp.shared.renameOnDoubleClick else { return }
         renameController.beginEditing(node: node)
     }
 

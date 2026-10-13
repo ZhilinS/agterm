@@ -24,8 +24,9 @@ paths:
   would sit on the window's top edge separating nothing and read as a rendering artifact.
   `effectiveToolbarMode` falls back through legacy `compactToolbar` (`false` = normal, nil/true = compact);
   writing a mode clears the legacy field.
-- Default-on nil fields are `notificationsEnabled`, `notificationBadgeEnabled`, `rightClickPaste`, and
-  `workspaceRowClickExpands`, whose mirror gates the sidebar row-click toggle only ([[sidebar]]).
+- Default-on nil fields are `notificationsEnabled`, `notificationBadgeEnabled`, `rightClickPaste`,
+  `workspaceRowClickExpands`, whose mirror gates the sidebar row-click toggle only, and
+  `renameOnDoubleClick`, whose mirror decides whether that toggle waits for a rename double-click ([[sidebar]]).
   Default-off nil fields include attention button, Dock bounce, global config inheritance, close
   confirmation, auto-follow, hidden inactive sidebars, and interface hiding. `restoreMode` defaults to
   `none`; the legacy `restoreRunningCommand` boolean migrates to `rerun` or `none`.

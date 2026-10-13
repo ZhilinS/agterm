@@ -72,7 +72,7 @@ private struct SettingHint: View {
     }
 }
 
-/// General tab: Mouse (scroll speed, right-click-pastes, link opening, workspace-row click) and Sessions
+/// General tab: Mouse (scroll speed, right-click-pastes, link opening, workspace-row click and rename) and Sessions
 /// (new-session directory, restore mode, the flagged view layout, here because the Interface tab is full,
 /// and the inherit-global-ghostty-config toggle, here because a section of its own made the tab scroll);
 /// visual and notification settings have their own tabs.
@@ -99,6 +99,8 @@ private struct GeneralSettingsView: View {
                 .accessibilityIdentifier("settings-link-open-mode")
                 Toggle("Click a workspace row to expand or collapse", isOn: workspaceRowClickExpands)
                     .accessibilityIdentifier("settings-workspace-row-click-expands")
+                Toggle("Double-click a workspace or folder to rename", isOn: renameOnDoubleClick)
+                    .accessibilityIdentifier("settings-rename-on-double-click")
             }
 
             Section("Sessions") {
@@ -198,6 +200,12 @@ private struct GeneralSettingsView: View {
     private var workspaceRowClickExpands: Binding<Bool> {
         Binding(get: { model.settings.workspaceRowClickExpands ?? true },
                 set: { model.setWorkspaceRowClickExpands($0 ? nil : false) })
+    }
+
+    /// Default ON; turning it off stores false, so a row click toggles at once and only the menu renames.
+    private var renameOnDoubleClick: Binding<Bool> {
+        Binding(get: { model.settings.renameOnDoubleClick ?? true },
+                set: { model.setRenameOnDoubleClick($0 ? nil : false) })
     }
 
     /// Default 3. The config emits 3 either way, so the default speed is effective regardless.

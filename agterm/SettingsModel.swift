@@ -70,6 +70,7 @@ final class SettingsModel {
         applyAgentStatusColors()
         applyAgentStatusShapes()
         applyWorkspaceRowClickExpands()
+        applyRenameOnDoubleClick()
         applyAttentionButtonEnabled()
         applyStatusReset()
         applyInterfaceElements()
@@ -218,6 +219,7 @@ final class SettingsModel {
     func setCursorBlink(_ value: Bool?) { settings.cursorBlink = value; persistAndApply() }
     // sidebar behavior, not a ghostty key; the Coordinator reads the mirror on the next click.
     func setWorkspaceRowClickExpands(_ value: Bool?) { settings.workspaceRowClickExpands = value; persistAndApply() }
+    func setRenameOnDoubleClick(_ value: Bool?) { settings.renameOnDoubleClick = value; persistAndApply() }
     func setInactivePaneMuteStrength(_ value: Int?) { settings.inactivePaneMuteStrength = value; persistAndApply() }
     func setSidebarBackgroundShift(_ value: Int?) { settings.sidebarBackgroundShift = value; persistAndApply() }
     func setSidebarFontSize(_ value: Double?) { settings.sidebarFontSize = value; persistAndApply() }
@@ -748,6 +750,7 @@ final class SettingsModel {
         applyAgentStatusColors()
         applyAgentStatusShapes()
         applyWorkspaceRowClickExpands()
+        applyRenameOnDoubleClick()
         applyAttentionButtonEnabled()
         applyStatusReset()
         applyInterfaceElements()
@@ -785,6 +788,10 @@ final class SettingsModel {
 
     private func applyWorkspaceRowClickExpands() {
         GhosttyApp.shared.setWorkspaceRowClickExpands(settings.workspaceRowClickExpands ?? true)
+    }
+
+    private func applyRenameOnDoubleClick() {
+        GhosttyApp.shared.setRenameOnDoubleClick(settings.renameOnDoubleClick ?? true)
     }
 
     private func applyAttentionButtonEnabled() {

@@ -71,6 +71,9 @@ final class GhosttyApp {
     /// Coordinator reads it in `handleSingleClick`, and the disclosure triangle ignores it because AppKit
     /// toggles that natively. Settings-mirrored like `toolbarMode`.
     private(set) var workspaceRowClickExpands: Bool = true
+    /// Whether a double-click renames a workspace or folder row, which is what defers the row-click toggle;
+    /// on by default. Read by the sidebar Coordinator's click handlers. Settings-mirrored like `toolbarMode`.
+    private(set) var renameOnDoubleClick: Bool = true
     /// The persisted choice and effective mode frozen before the first surface. An ineligible live request
     /// falls back to fresh shells without releasing its daemon claims. Settings changes never mutate either
     /// latch, so later sessions, reap, and reopened windows use the same launch policy.
@@ -227,6 +230,10 @@ final class GhosttyApp {
 
     func setWorkspaceRowClickExpands(_ enabled: Bool) {
         workspaceRowClickExpands = enabled
+    }
+
+    func setRenameOnDoubleClick(_ enabled: Bool) {
+        renameOnDoubleClick = enabled
     }
 
     func setAttentionButtonEnabled(_ enabled: Bool) {

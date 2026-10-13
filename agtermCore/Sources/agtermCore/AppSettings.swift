@@ -298,6 +298,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Whether clicking anywhere on a workspace row expands or collapses it; nil = on. The disclosure
     /// triangle toggles regardless of this setting.
     public var workspaceRowClickExpands: Bool?
+    /// Whether a double-click on a workspace or folder row renames it; nil = on. On defers the row-click
+    /// toggle by the double-click interval so a rename does not flip the row; off toggles at once.
+    public var renameOnDoubleClick: Bool?
     /// Which directory a new (⌘T) session opens in, a `NewSessionDirectory` raw value; nil = `home`. Read
     /// by `AppActions.newSession()` through `resolveNewSessionCwd`.
     public var newSessionDirectory: String?
@@ -365,7 +368,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 inheritGlobalGhosttyConfig: Bool? = nil, attentionButtonEnabled: Bool? = nil,
                 dockBounce: String? = nil, notificationSoundName: String? = nil,
                 blockedStatusSoundName: String? = nil, statusReset: String? = nil, rightClickPaste: Bool? = nil,
-                workspaceRowClickExpands: Bool? = nil,
+                workspaceRowClickExpands: Bool? = nil, renameOnDoubleClick: Bool? = nil,
                 newSessionDirectory: String? = nil, newSessionCustomDirectory: String? = nil,
                 newSessionPlacement: String? = nil,
                 confirmCloseSession: Bool? = nil, closeGraceUndoEnabled: Bool? = nil,
@@ -409,6 +412,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.statusReset = statusReset
         self.rightClickPaste = rightClickPaste
         self.workspaceRowClickExpands = workspaceRowClickExpands
+        self.renameOnDoubleClick = renameOnDoubleClick
         self.newSessionDirectory = newSessionDirectory
         self.newSessionCustomDirectory = newSessionCustomDirectory
         self.newSessionPlacement = newSessionPlacement
