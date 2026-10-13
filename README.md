@@ -24,41 +24,20 @@ If you have upstream installed: `brew uninstall --cask agterm` first.
 
 ![Session folders, rename on double-click and ⌘-drag of the quick terminal](docs/screenshots/gif/dragging+folders.gif)
 
-### Session folders
+- **Session folders.** One level of folders inside a workspace: `workspace → folder → session`.
+  Create one from a session or workspace menu, drag sessions in and out, **Move to** any folder of any
+  workspace. `agtermctl tree` shows `folder: <name>`; nothing else in the control API changes.
+  Upstream declined folders as a model change ([#293](https://github.com/umputun/agterm/discussions/293),
+  [#397](https://github.com/umputun/agterm/pull/397),
+  [#406](https://github.com/umputun/agterm/discussions/406)), hence a fork and not a PR.
+- **Rename on double-click.** Upstream renames a workspace on a second click, so every click on a row
+  waits out the double-click delay before it toggles. This setting (General ▸ Mouse) moves rename to
+  double-click and the row responds to a single click at once.
+- **⌘-drag the quick terminal.** Drag the panel anywhere; the position is remembered per display until
+  the next launch.
 
-Group sessions inside a workspace: `workspace → folder → session`, one level deep. Folders and loose
-sessions interleave in any order, so a workspace can be a repo and a folder a branch or a task.
-
-- **New Folder** in a session row's menu wraps that session (or every selected session) in a folder at
-  its position. The same item in a workspace row's menu appends an empty folder. Both open inline rename.
-- **Move to** in a session row's menu lists every folder of every workspace; dropping onto another
-  workspace's folder is a cross-workspace move that lands inside it.
-- Drag sessions onto or between rows inside a folder, or back out to the workspace level. Folder rows
-  spring-load open on hover like workspace rows.
-- **Delete Folder** closes its sessions after the same confirmation as Delete Workspace. Undo restores
-  the sessions in order.
-- `agtermctl tree` reports `folder: <name>` on sessions inside one. No other control commands change.
-
-Upstream declined folders as a model change ([#293](https://github.com/umputun/agterm/discussions/293),
-[#397](https://github.com/umputun/agterm/pull/397),
-[#406](https://github.com/umputun/agterm/discussions/406)), which is why this is a fork and not a PR.
-
-### Rename on double-click
-
-**Settings ▸ General ▸ Mouse ▸ Rename on double-click.** With it on, a single click on a workspace or
-folder row toggles it immediately instead of waiting out the double-click delay, and renaming moves to
-double-click.
-
-### Move the quick terminal with ⌘-drag
-
-⌘-drag anywhere on the quick terminal panel to move it. The position is remembered per display for the
-current launch; a display with no record centers the panel as before. ⌘-click still opens links.
-
-## Known differences from upstream
-
-- The saved sidebar tree (`workspaces.json`) has a different format to carry folders, and neither
-  build reads the other's. Switching between the fork and the original starts with an empty tree.
-- Dragging folder rows themselves (reorder, across workspaces) is not implemented yet.
+Known differences: `workspaces.json` has a fork-only format, so switching builds starts with an empty
+tree. Dragging folder rows themselves is not done yet.
 
 ## Keeping up with upstream
 
