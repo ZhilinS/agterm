@@ -14,10 +14,16 @@ final class SidebarControlClickTests: XCTestCase {
     private var window: NSWindow!
     private var outline: NSOutlineView!
     private var coordinator: WorkspaceSidebar.Coordinator!
+    private var savedRowClickExpands = true
+    private var savedRenameOnDoubleClick = true
 
     override func setUp() async throws {
         try await super.setUp()
         await MainActor.run {
+            savedRowClickExpands = GhosttyApp.shared.workspaceRowClickExpands
+            savedRenameOnDoubleClick = GhosttyApp.shared.renameOnDoubleClick
+            GhosttyApp.shared.setWorkspaceRowClickExpands(true)
+            GhosttyApp.shared.setRenameOnDoubleClick(true)
             stateDir = FileManager.default.temporaryDirectory
                 .appendingPathComponent("agterm-control-click-tests-\(UUID().uuidString)", isDirectory: true)
             library = WindowLibrary(directory: stateDir)
@@ -27,6 +33,8 @@ final class SidebarControlClickTests: XCTestCase {
 
     override func tearDown() async throws {
         await MainActor.run {
+            GhosttyApp.shared.setWorkspaceRowClickExpands(savedRowClickExpands)
+            GhosttyApp.shared.setRenameOnDoubleClick(savedRenameOnDoubleClick)
             window?.orderOut(nil)
             window = nil
             outline = nil
@@ -72,46 +80,54 @@ final class SidebarControlClickTests: XCTestCase {
 
     func testRowClickTogglesAtOnceWithoutDoubleClickRename() throws {
         GhosttyApp.shared.setRenameOnDoubleClick(false)
-        defer { GhosttyApp.shared.setRenameOnDoubleClick(true) }
-        let store = try XCTUnwrap(library.activeStore)
-        let ws = try XCTUnwrap(store.workspaces.first)
-        buildSidebar(for: store, outline: ClickedRowOutline())
-        let row = try XCTUnwrap(rowIndex { $0.kind == .workspace && $0.id == ws.id })
-        let node = try XCTUnwrap(outline.item(atRow: row))
-
-        try click(row: row)
-        XCTAssertFalse(outline.isItemExpanded(node), "with no double-click rename the click should collapse the row at once")
+        for node in try buildGroupRows() {
+            for _ in 0..<2 {
+                let wasExpanded = outline.isItemExpanded(node)
+                try click(node, count: 1)
+                XCTAssertNotEqual(outline.isItemExpanded(node), wasExpanded, "\(node.kind) row should toggle at once")
+            }
+        }
     }
 
     func testRowClickWaitsForTheDoubleClickIntervalWithDoubleClickRename() throws {
-        let store = try XCTUnwrap(library.activeStore)
-        let ws = try XCTUnwrap(store.workspaces.first)
-        buildSidebar(for: store, outline: ClickedRowOutline())
-        let row = try XCTUnwrap(rowIndex { $0.kind == .workspace && $0.id == ws.id })
-        let node = try XCTUnwrap(outline.item(atRow: row))
-
-        try click(row: row)
-        XCTAssertTrue(outline.isItemExpanded(node), "the toggle should wait out a possible rename double-click")
-        RunLoop.main.run(until: Date().addingTimeInterval(NSEvent.doubleClickInterval + 0.2))
-        XCTAssertFalse(outline.isItemExpanded(node), "and then collapse the row")
+        for node in try buildGroupRows() {
+            let wasExpanded = outline.isItemExpanded(node)
+            try click(node, count: 1)
+            XCTAssertEqual(outline.isItemExpanded(node), wasExpanded, "\(node.kind) row should wait out a rename double-click")
+            drainDoubleClickInterval()
+            XCTAssertNotEqual(outline.isItemExpanded(node), wasExpanded, "\(node.kind) row should then toggle")
+        }
     }
 
-    func testDoubleClickRenamesOnlySessionsWithoutDoubleClickRename() throws {
+    func testDoubleClickTogglesOnceAndRenamesNothingWithoutDoubleClickRename() throws {
         GhosttyApp.shared.setRenameOnDoubleClick(false)
-        defer { GhosttyApp.shared.setRenameOnDoubleClick(true) }
-        let store = try XCTUnwrap(library.activeStore)
-        let ws = try XCTUnwrap(store.workspaces.first)
-        let session = try XCTUnwrap(store.activeSession)
-        buildSidebar(for: store, outline: ClickedRowOutline())
-        let clickOutline = try XCTUnwrap(outline as? ClickedRowOutline)
-
-        clickOutline.forcedClickedRow = try XCTUnwrap(rowIndex { $0.kind == .workspace && $0.id == ws.id })
-        coordinator.handleDoubleClick(outline)
-        XCTAssertFalse(coordinator.renameController.isEditing, "a workspace double-click should not rename")
-
-        clickOutline.forcedClickedRow = try XCTUnwrap(rowIndex { $0.kind == .session && $0.id == session.id })
-        coordinator.handleDoubleClick(outline)
+        for node in try buildGroupRows() {
+            for _ in 0..<2 {
+                let wasExpanded = outline.isItemExpanded(node)
+                try click(node, count: 1)
+                try click(node, count: 2)
+                drainDoubleClickInterval()
+                XCTAssertNotEqual(outline.isItemExpanded(node), wasExpanded, "\(node.kind) double-click should toggle exactly once")
+                XCTAssertFalse(coordinator.renameController.isEditing, "\(node.kind) double-click should not rename")
+            }
+        }
+        let session = try XCTUnwrap(library.activeStore?.activeSession)
+        try click(try XCTUnwrap(coordinator.cachedNode(session.id)), count: 2)
         XCTAssertTrue(coordinator.renameController.isEditing, "a session double-click still renames")
+    }
+
+    func testRowClickDoesNothingWhenRowClickExpansionIsOff() throws {
+        GhosttyApp.shared.setWorkspaceRowClickExpands(false)
+        let nodes = try buildGroupRows()
+        for renames in [false, true] {
+            GhosttyApp.shared.setRenameOnDoubleClick(renames)
+            for node in nodes {
+                let wasExpanded = outline.isItemExpanded(node)
+                try click(node, count: 1)
+                drainDoubleClickInterval()
+                XCTAssertEqual(outline.isItemExpanded(node), wasExpanded, "\(node.kind) row must not toggle, renames=\(renames)")
+            }
+        }
     }
 
     func testControlClickOnWorkspaceAddButtonOpensMenuWithoutAddingSession() throws {
@@ -166,22 +182,41 @@ final class SidebarControlClickTests: XCTestCase {
         override var clickedRow: Int { forcedClickedRow }
     }
 
-    /// Sends the outline's action as a plain click on the row body, the mouse-up its hit test reads made current.
-    private func click(row: Int) throws {
+    /// A workspace holding a folder, built on a `ClickedRowOutline`; the folder comes first so collapsing the
+    /// workspace cannot hide it mid-test.
+    private func buildGroupRows() throws -> [SidebarNode] {
+        let store = try XCTUnwrap(library.activeStore)
+        let ws = try XCTUnwrap(store.workspaces.first)
+        let member = try XCTUnwrap(store.addSession(toWorkspace: ws.id, cwd: "/tmp/member"))
+        let folder = try XCTUnwrap(store.addFolder(toWorkspace: ws.id, name: "F", containing: [member.id]))
+        buildSidebar(for: store, outline: ClickedRowOutline())
+        return [try XCTUnwrap(coordinator.cachedNode(folder.id)), try XCTUnwrap(coordinator.cachedNode(ws.id))]
+    }
+
+    /// Dispatches one row-body mouse-up the way `NSTableView.mouseDown` does: `action` for the first click,
+    /// `doubleAction` alone for the second. The mouse-up becomes `NSApp.currentEvent`, which the hit test reads.
+    private func click(_ node: SidebarNode, count: Int) throws {
+        let row = outline.row(forItem: node)
+        XCTAssertGreaterThanOrEqual(row, 0, "\(node.kind) row should be visible")
         let rect = outline.rect(ofRow: row)
         let point = outline.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
-        NSApp.postEvent(try mouseEvent(.leftMouseUp, at: point, modifierFlags: []), atStart: true)
+        NSApp.postEvent(try mouseEvent(.leftMouseUp, at: point, modifierFlags: [], clickCount: count), atStart: true)
         _ = NSApp.nextEvent(matching: .leftMouseUp, until: .distantFuture, inMode: .default, dequeue: true)
         try XCTUnwrap(outline as? ClickedRowOutline).forcedClickedRow = row
-        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(outline.action), to: outline.target, from: outline))
+        let selector = try XCTUnwrap(count == 1 ? outline.action : outline.doubleAction)
+        XCTAssertTrue(NSApp.sendAction(selector, to: outline.target, from: outline))
+    }
+
+    private func drainDoubleClickInterval() {
+        RunLoop.main.run(until: Date().addingTimeInterval(NSEvent.doubleClickInterval + 0.2))
     }
 
     private func mouseEvent(_ type: NSEvent.EventType, at point: NSPoint,
-                            modifierFlags: NSEvent.ModifierFlags = .control) throws -> NSEvent {
+                            modifierFlags: NSEvent.ModifierFlags = .control, clickCount: Int = 1) throws -> NSEvent {
         try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point, modifierFlags: modifierFlags,
                                          timestamp: ProcessInfo.processInfo.systemUptime,
                                          windowNumber: window.windowNumber, context: nil, eventNumber: 0,
-                                         clickCount: 1, pressure: 1))
+                                         clickCount: clickCount, pressure: 1))
     }
 
     private func rowIndex(matching predicate: (SidebarNode) -> Bool) -> Int? {
@@ -204,6 +239,7 @@ final class SidebarControlClickTests: XCTestCase {
         outline.outlineTableColumn = column
         outline.allowsMultipleSelection = true
         outline.action = #selector(WorkspaceSidebar.Coordinator.handleSingleClick(_:))
+        outline.doubleAction = #selector(WorkspaceSidebar.Coordinator.handleDoubleClick(_:))
         outline.target = coordinator
 
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 240, height: 400))
