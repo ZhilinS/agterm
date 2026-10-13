@@ -82,6 +82,11 @@ final class QuickTerminalController {
     @ObservationIgnored private var autoHiddenAt: Date?
     private static let reshowSuppression: TimeInterval = 0.3
 
+    /// Where a ⌘-drag last left the panel, per display, as an offset from that display's visible frame
+    /// origin. The next show on that display lands there; a display with no record centers. Per launch,
+    /// like the panel itself.
+    @ObservationIgnored private var rememberedOrigins: [CGDirectDisplayID: WindowGeometry.Point] = [:]
+
     private init() {}
 
     /// Toolbar-button / hotkey / menu action: show if hidden, hide if visible. Always the human path, so the
@@ -117,7 +122,7 @@ final class QuickTerminalController {
         let panel = ensurePanel()
         hostingView?.rootView = QuickTerminalPanelContent(controller: self,
                                                           terminalColor: terminalColorProvider())
-        panel.setFrame(Self.targetFrame(zoomed: isZoomed), display: true)
+        panel.setFrame(targetFrame(zoomed: isZoomed), display: true)
         // NEVER `NSApp.activate()` here. Activating agterm raises ITS WINDOWS too, so summoning the panel
         // from another application buries that application behind the whole terminal, and dismissing leaves
         // the user in agterm instead of where they were. That round trip is the entire point of the feature.
@@ -135,6 +140,7 @@ final class QuickTerminalController {
         isZoomed = false
         holdsKey = false
         dismissesOnFocusLoss = true
+        panel?.cancelDrag()
         panel?.orderOut(nil)
         // `orderOut` leaves `NSView.window` set, so without this the ordered-out panel's surface — the one
         // that spends the most time hidden — would keep its swap chain for the rest of the app's life.
@@ -146,6 +152,7 @@ final class QuickTerminalController {
     /// panel dismisses itself.
     private func handleResignKey() {
         holdsKey = false
+        panel?.cancelDrag()
         guard dismissesOnFocusLoss, isVisible else { return }
         hide()
         autoHiddenAt = Date()
@@ -159,7 +166,8 @@ final class QuickTerminalController {
         let want = mode.desiredValue(current: isZoomed)
         guard want != isZoomed else { return true }
         isZoomed = want
-        panel?.setFrame(Self.targetFrame(zoomed: want), display: true)
+        panel?.cancelDrag()
+        panel?.setFrame(targetFrame(zoomed: want), display: true)
         focus()
         return true
     }
@@ -196,6 +204,9 @@ final class QuickTerminalController {
         if let panel { return panel }
         let panel = QuickTerminalPanel(onBecomeKey: { [weak self] in self?.holdsKey = true },
                                        onResignKey: { [weak self] in self?.handleResignKey() })
+        // a zoomed panel fills its screen, so there is nowhere to drag it to.
+        panel.dragEnabled = { [weak self] in self?.isZoomed == false }
+        panel.onMoved = { [weak self] frame in self?.rememberOrigin(of: frame) }
         let host = NSHostingView(rootView: QuickTerminalPanelContent(
             controller: self, terminalColor: terminalColorProvider()
         ))
@@ -224,19 +235,42 @@ final class QuickTerminalController {
         surfaceView = nil
     }
 
-    /// Centered on the focused screen at whatever `QuickTerminalMetrics` sizes it to, and its whole visible
-    /// frame while zoomed. The panel follows the POINTER's screen, not the app's: it is summoned from
-    /// another application, where agterm's own key window is no guide to where the user is looking. The
-    /// user's size is read here rather than cached because the frame is recomputed on every show, so a
-    /// Settings change lands on the next summon with nothing to notify.
-    private static func targetFrame(zoomed: Bool) -> NSRect {
-        let visible = activeScreen().visibleFrame
+    /// On the focused screen at whatever `QuickTerminalMetrics` sizes it to, where a ⌘-drag last left it
+    /// there or centered, and its whole visible frame while zoomed. The panel follows the POINTER's screen,
+    /// not the app's: it is summoned from another application, where agterm's own key window is no guide
+    /// to where the user is looking. The user's size is read here rather than cached because the frame is
+    /// recomputed on every show, so a Settings change lands on the next summon with nothing to notify.
+    private func targetFrame(zoomed: Bool) -> NSRect {
+        let screen = Self.activeScreen()
+        let visible = screen.visibleFrame
         guard !zoomed else { return visible }
         let size = QuickTerminalMetrics.panelSize(
             visible: WindowGeometry.Size(width: visible.width, height: visible.height),
             sizePercent: GhosttyApp.shared.quickTerminalSizePercent)
-        return NSRect(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2,
-                      width: size.width, height: size.height)
+        let origin = QuickTerminalMetrics.panelOrigin(
+            visible: Self.geometry(visible), size: size,
+            remembered: Self.displayID(of: screen).flatMap { rememberedOrigins[$0] })
+        return NSRect(x: origin.x, y: origin.y, width: size.width, height: size.height)
+    }
+
+    /// Records where a drag left the panel, against the display showing most of it, which need not be
+    /// the one it was summoned onto.
+    private func rememberOrigin(of frame: NSRect) {
+        let screens = NSScreen.screens
+        guard let index = WindowGeometry.bestDisplayIndex(for: Self.geometry(frame),
+                                                          among: screens.map { Self.geometry($0.frame) }),
+              let id = Self.displayID(of: screens[index]) else { return }
+        let visible = screens[index].visibleFrame
+        rememberedOrigins[id] = WindowGeometry.Point(x: frame.minX - visible.minX, y: frame.minY - visible.minY)
+    }
+
+    private static func displayID(of screen: NSScreen) -> CGDirectDisplayID? {
+        (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+    }
+
+    private static func geometry(_ rect: NSRect) -> WindowGeometry.Rect {
+        WindowGeometry.Rect(origin: WindowGeometry.Point(x: rect.minX, y: rect.minY),
+                            size: WindowGeometry.Size(width: rect.width, height: rect.height))
     }
 
     private static func activeScreen() -> NSScreen {
@@ -254,6 +288,23 @@ final class QuickTerminalController {
 final class QuickTerminalPanel: NSPanel {
     private let onBecomeKey: () -> Void
     private let onResignKey: () -> Void
+
+    /// Whether a ⌘-drag may move the panel. Off while zoomed, where it fills the screen.
+    var dragEnabled: () -> Bool = { true }
+    /// Called with the final frame when a ⌘-drag ends.
+    var onMoved: ((NSRect) -> Void)?
+
+    /// How far the pointer travels from a ⌘-mouse-down before it is a drag rather than a click.
+    static let dragThreshold: CGFloat = 4
+
+    /// A ⌘-mouse-down held back until it proves to be a click or a drag. ⌘-click opens a link in the
+    /// terminal, so the down is forwarded with its up when no drag follows.
+    private var pendingCommandDown: NSEvent?
+    private var dragging = false
+    private var lastDragLocation = NSPoint.zero
+    /// The rest of a cancelled gesture is swallowed up to and including its release: libghostty runs
+    /// release handling (copy-on-select, mouse reporting) for a release whose press it never saw.
+    private var swallowingRelease = false
 
     init(onBecomeKey: @escaping () -> Void, onResignKey: @escaping () -> Void) {
         self.onBecomeKey = onBecomeKey
@@ -281,6 +332,59 @@ final class QuickTerminalPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// A borderless panel has no title bar to grab and the terminal takes every mouse event, so the drag
+    /// is intercepted here, ahead of the view. The event's own location is used, not `NSEvent.mouseLocation`,
+    /// so a synthesized event in a test moves the panel the way a real one does.
+    override func sendEvent(_ event: NSEvent) {
+        let location = convertPoint(toScreen: event.locationInWindow)
+        switch event.type {
+        case .leftMouseDown where dragEnabled()
+            && event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command):
+            swallowingRelease = false
+            pendingCommandDown = event
+            dragging = false
+            lastDragLocation = location
+        case .leftMouseDown:
+            // a gesture the panel lost track of (hidden or blurred mid-way) must not pair with this press.
+            cancelDrag()
+            swallowingRelease = false
+            super.sendEvent(event)
+        case .leftMouseDragged where swallowingRelease:
+            return
+        case .leftMouseUp where swallowingRelease:
+            swallowingRelease = false
+        case .leftMouseDragged where pendingCommandDown != nil || dragging:
+            if !dragging {
+                guard hypot(location.x - lastDragLocation.x, location.y - lastDragLocation.y) > Self.dragThreshold
+                else { return }
+                dragging = true
+                pendingCommandDown = nil
+            }
+            setFrameOrigin(NSPoint(x: frame.minX + location.x - lastDragLocation.x,
+                                   y: frame.minY + location.y - lastDragLocation.y))
+            lastDragLocation = location
+        case .leftMouseUp where pendingCommandDown != nil:
+            let down = pendingCommandDown
+            pendingCommandDown = nil
+            down.map { super.sendEvent($0) }
+            super.sendEvent(event)
+        case .leftMouseUp where dragging:
+            dragging = false
+            onMoved?(frame)
+        default:
+            super.sendEvent(event)
+        }
+    }
+
+    /// Forgets a gesture in flight: a held ⌘-click is dropped, a drag ends where the panel is without
+    /// being recorded, and the gesture's remaining events never reach the terminal.
+    func cancelDrag() {
+        // keep an earlier cancel's suppression: resign-key cancels and then hides, which cancels again.
+        swallowingRelease = swallowingRelease || pendingCommandDown != nil || dragging
+        pendingCommandDown = nil
+        dragging = false
+    }
 
     @objc private func handleBecomeKey() {
         onBecomeKey()

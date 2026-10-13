@@ -122,6 +122,13 @@ session drag are out of scope.
   displays. nil keeps its own path because no single percentage reproduces the pair: the cap binds above
   roughly 1222x780 points and the share below it. The panel re-frames on every show, so a Settings change
   lands on the next summon and needs no notification.
+- ⌘-drag moves the unzoomed panel. `QuickTerminalPanel.sendEvent` holds the ⌘-mouse-down until the pointer
+  passes `dragThreshold` and forwards it with its up otherwise, since ⌘-click opens links there; it moves
+  by the EVENT's screen location, never `NSEvent.mouseLocation`, which a synthesized event cannot drive.
+  Position memory is per display and per launch, clamped on show by `QuickTerminalMetrics.panelOrigin`; a
+  display with no record centers. A cancelled gesture (`hide`, resign-key, `setZoom`) is swallowed through
+  its release: pinned libghostty runs release handling for a release whose press it never saw.
+  No position control command or read-back: nothing but the pointer sets it.
 - While the quick terminal OWNS THE KEYBOARD, no deck surface may be active. Gate main, split, maximized
   split, scratch, and overlay with `deckInteractive && isActive && !quickTerminal.holdsKey`. Read `holdsKey`,
   never `isVisible`: the predicate is app-level, so it inerts EVERY window, and a PINNED panel (a control
