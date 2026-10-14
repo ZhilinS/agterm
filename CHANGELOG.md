@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.36.0-fork.2 - 2026-10-14
+
+### Improved
+
+- **A folder lives while it holds sessions.** Closing the last session of a folder, dragging it out or moving it elsewhere removes the folder; an empty folder is only made on purpose. Reopen Closed Item and Open Recent bring the folder back with the session, at its old place, with its name and collapsed state. Undoing a workspace close keeps its folders.
+- **New session at the active session's level.** ⌘N, New Session and the row `+` add the session inside the active session's folder when it has one, with the "end" placement as well as "after current". Folder rows get the hover `+` a workspace row has.
+
 ## v0.36.0-fork.1 - 2026-10-14
 
 First release of the [ZhilinS/agterm](https://github.com/ZhilinS/agterm) fork, on top of upstream v0.36.0.
