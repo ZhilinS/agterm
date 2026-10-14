@@ -62,7 +62,7 @@ extension AppStore {
     }
 
     /// Removes an EMPTY folder; one still holding sessions is left alone, since dropping it would drop them
-    /// without teardown. `AppActions.deleteFolder` closes them first.
+    /// without teardown. `AppActions.deleteFolder` closes them first, and closing the last one removes it.
     public func deleteFolder(_ folderID: UUID) {
         guard let index = workspaceIndex(ofFolder: folderID),
               workspaces[index].folder(withID: folderID)?.sessions.isEmpty == true else { return }

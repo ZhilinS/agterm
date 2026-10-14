@@ -336,16 +336,24 @@ extension WorkspaceSidebar.Coordinator {
         addNewSession(toWorkspace: node.id)
     }
 
-    /// Inline "+" button on a workspace row, the right-click "New Session" action. The button carries no
-    /// workspace id, so it is derived from the outline row at click time — reused cells target the right one.
+    /// Inline "+" button on a workspace or folder row, the right-click "New Session" action. The button carries
+    /// no id, so it is derived from the outline row at click time — reused cells target the right one.
     @objc func addSessionButtonClicked(_ sender: NSButton) {
-        // cancel any pending single-click workspace toggle so clicking "+" doesn't also flip expansion.
+        // cancel any pending single-click row toggle so clicking "+" doesn't also flip expansion.
         pendingRowToggle?.cancel()
         pendingRowToggle = nil
         guard let outline = outlineView else { return }
         let row = outline.row(for: sender)
-        guard row >= 0, let node = outline.item(atRow: row) as? SidebarNode, node.kind == .workspace else { return }
-        addNewSession(toWorkspace: node.id)
+        guard row >= 0, let node = outline.item(atRow: row) as? SidebarNode else { return }
+        switch node.kind {
+        case .workspace:
+            addNewSession(toWorkspace: node.id)
+        case .folder:
+            guard let workspace = store.workspace(forFolder: node.id) else { return }
+            addSession(toWorkspace: workspace.id, cwd: actions.resolvedNewSessionCwd(), folder: node.id)
+        case .session:
+            return
+        }
     }
 
     @objc private func menuDeleteWorkspace(_ sender: NSMenuItem) {

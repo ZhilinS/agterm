@@ -32,6 +32,8 @@ struct PendingSessionClose {
     let workspaceIndex: Int
     let sessionIndex: Int
     let placement: SessionPlacement?
+    /// The folder the session sat in, put back by undo when closing it removed the folder.
+    let folder: ClosedFolder?
     let recentID: UUID
 }
 
@@ -111,6 +113,7 @@ extension AppStore {
             workspaceIndex: location.workspaceIndex,
             sessionIndex: location.sessionIndex,
             placement: workspace.placement(ofSession: sessionID),
+            folder: workspace.closedFolder(ofSession: sessionID),
             recentID: closeID
         )
         pendingCloseRecords[closeID] = .sessions(PendingSessionsClose(
@@ -120,7 +123,7 @@ extension AppStore {
         pendingCloseOrder.append(closeID)
         recordRecentClosedSession(session, workspaceID: workspace.id, workspaceName: workspace.name,
                                   workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex,
-                                  placement: close.placement, id: closeID)
+                                  placement: close.placement, folder: close.folder, id: closeID)
         if wasActive {
             selectedSessionID = closeReselectionTarget(after: location)
             replaceSidebarSelection(with: selectedSessionID)
@@ -155,6 +158,7 @@ extension AppStore {
                     workspaceIndex: workspaceIndex,
                     sessionIndex: sessionIndex,
                     placement: workspace.placement(ofSession: session.id),
+                    folder: workspace.closedFolder(ofSession: session.id),
                     recentID: UUID()
                 ))
             }
@@ -175,7 +179,7 @@ extension AppStore {
         for close in closes {
             recordRecentClosedSession(close.session, workspaceID: close.workspaceID, workspaceName: close.workspaceName,
                                       workspaceIndex: close.workspaceIndex, sessionIndex: close.sessionIndex,
-                                      placement: close.placement, id: close.recentID)
+                                      placement: close.placement, folder: close.folder, id: close.recentID)
             emitSessionClosed(close.session, workspace: close.workspaceID)
         }
         if removingActive {
@@ -303,16 +307,30 @@ extension AppStore {
             switch record {
             case .sessions(let close):
                 guard let member = close.sessions.first(where: { $0.session.id == sessionID }) else { continue }
-                // a survivor after the dropped member in the same workspace was saved one slot too far down
+                // a survivor after the dropped member in the same workspace was saved one slot too far down;
+                // so is one after the member's folder when nothing will put that folder back
+                let folderGone = member.folder.map { shell in
+                    folder(withID: shell.id) == nil
+                        && !close.sessions.contains { $0.session.id != sessionID && $0.folder?.id == shell.id }
+                } ?? false
+                var dropped = [member.placement].compactMap { $0 }
+                if folderGone, let shell = member.folder {
+                    dropped.append(SessionPlacement(itemIndex: shell.itemIndex))
+                }
                 let rest = close.sessions.filter { $0.session.id != sessionID }.map { other in
                     guard other.workspaceID == member.workspaceID else { return other }
-                    let placement = member.placement.flatMap { gone in other.placement?.shifted(afterDropping: gone) }
-                        ?? other.placement
+                    let placement = dropped.reduce(other.placement) { $0?.shifted(afterDropping: $1) }
+                    let folder = dropped.reduce(other.folder) { $0?.shifted(afterDropping: $1) }
                     return PendingSessionClose(
-                        session: other.session, workspaceID: other.workspaceID, workspaceName: other.workspaceName,
+                        session: other.session,
+                        workspaceID: other.workspaceID,
+                        workspaceName: other.workspaceName,
                         workspaceIndex: other.workspaceIndex,
                         sessionIndex: other.sessionIndex > member.sessionIndex ? other.sessionIndex - 1 : other.sessionIndex,
-                        placement: placement, recentID: other.recentID)
+                        placement: placement,
+                        folder: folder,
+                        recentID: other.recentID
+                    )
                 }
                 guard !rest.isEmpty else {
                     finalizePendingClose(id)
@@ -401,8 +419,7 @@ extension AppStore {
             guard case .workspace(let close)? = pendingCloseRecords[closeID], close.workspace.id == workspace.id else { continue }
             pendingCloseRecords.removeValue(forKey: closeID)
             pendingCloseTasks.removeValue(forKey: closeID)?.cancel()
-            let present = Set(folded.sessions.map(\.id))
-            for session in close.workspace.sessions where !present.contains(session.id) { folded.appendSession(session) }
+            folded.absorb(close.workspace, skipping: Set(folded.sessions.map(\.id)))
             focusMember = focusMember || close.focusMember
         }
         pendingCloseOrder.removeAll { pendingCloseRecords[$0] == nil }
@@ -459,6 +476,9 @@ extension AppStore {
             workspaces.insert(rebuiltWorkspaceShell(id: close.workspaceID, name: close.workspaceName), at: insertAt)
             workspaceIndex = insertAt
         }
+        if let folder = close.folder {
+            workspaces[workspaceIndex].restoreFolder(folder)
+        }
         if let placement = close.placement {
             workspaces[workspaceIndex].insertSession(close.session, at: placement)
         } else {
@@ -475,7 +495,7 @@ extension AppStore {
     }
 
     private func restorePendingSessions(_ close: PendingSessionsClose, selecting requestedSessionID: UUID?) {
-        for session in placedForRestore(close.sessions) {
+        for session in close.sessions {
             restorePendingSession(session)
         }
         let target = requestedSessionID.flatMap { id in close.sessions.contains { $0.session.id == id } ? id : nil }
@@ -486,39 +506,6 @@ extension AppStore {
             replaceSidebarSelection(with: selectedSessionID)
             disableFocusIfSelectionOutsideSet(selectedSessionID)
             recordRecency()
-        }
-    }
-
-    /// Members of a folder that is gone come back as one loose block where it stood, in their old order, and
-    /// later loose slots of that workspace move past the block. Every member recorded the folder's own slot,
-    /// so restoring them one by one there would reverse them.
-    private func placedForRestore(_ closes: [PendingSessionClose]) -> [PendingSessionClose] {
-        var blocks: [UUID: (workspace: UUID, itemIndex: Int, count: Int)] = [:]
-        for close in closes {
-            guard let folderID = close.placement?.folderID, folder(withID: folderID) == nil,
-                  let itemIndex = close.placement?.itemIndex else { continue }
-            blocks[folderID, default: (close.workspaceID, itemIndex, 0)].count += 1
-        }
-        guard !blocks.isEmpty else { return closes }
-        func grownBefore(_ itemIndex: Int, in workspace: UUID) -> Int {
-            blocks.values.filter { $0.workspace == workspace && $0.itemIndex < itemIndex }.reduce(0) { $0 + $1.count - 1 }
-        }
-        var taken: [UUID: Int] = [:]
-        return closes.map { close in
-            guard let placement = close.placement else { return close }
-            let itemIndex: Int
-            if let folderID = placement.folderID, blocks[folderID] != nil {
-                itemIndex = placement.itemIndex + grownBefore(placement.itemIndex, in: close.workspaceID) + taken[folderID, default: 0]
-                taken[folderID, default: 0] += 1
-            } else if placement.folderID == nil {
-                itemIndex = placement.itemIndex + grownBefore(placement.itemIndex, in: close.workspaceID)
-            } else {
-                return close
-            }
-            return PendingSessionClose(session: close.session, workspaceID: close.workspaceID,
-                                       workspaceName: close.workspaceName, workspaceIndex: close.workspaceIndex,
-                                       sessionIndex: close.sessionIndex, placement: SessionPlacement(itemIndex: itemIndex),
-                                       recentID: close.recentID)
         }
     }
 
@@ -536,8 +523,7 @@ extension AppStore {
         // order are not honored. the filter is defensive: a session held here cannot already be live elsewhere.
         if let existing = workspaces.firstIndex(where: { $0.id == close.workspace.id }) {
             let live = Set(workspaces.flatMap(\.sessions).map(\.id))
-            let restored = close.workspace.sessions.filter { !live.contains($0.id) }
-            for session in restored { workspaces[existing].appendSession(session) }
+            let restored = workspaces[existing].absorb(close.workspace, skipping: live)
             for session in restored {
                 session.dropUnrealizedPaneOverlays() // reinserted live objects, as in `restorePendingSession`
                 emitSessionCreated(session, workspace: workspaces[existing].id)

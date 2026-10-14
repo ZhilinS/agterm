@@ -30,6 +30,9 @@ extension AppStore {
                 index = insertAt
             }
             let session = session(from: recent.snapshot)
+            if let folder = recent.folder {
+                workspaces[index].restoreFolder(folder)
+            }
             if let placement = recent.placement {
                 workspaces[index].insertSession(session, at: placement)
             } else {
@@ -121,8 +124,12 @@ extension AppStore {
             let taken = Set(workspaces.flatMap(\.sessions).map(\.id))
                 .union(pendingHeldSessionIDs())
                 .union(occupiedElsewhere)
-            let missing = recent.snapshot.sessions.filter { !taken.contains($0.id) }.map { session(from: $0) }
-            for session in missing { workspaces[index].appendSession(session) }
+            let rebuilt = Workspace(
+                id: recent.snapshot.id,
+                name: recent.snapshot.name,
+                items: workspaceItems(from: recent.snapshot.items) { !taken.contains($0) }
+            )
+            let missing = workspaces[index].absorb(rebuilt, skipping: [])
             for session in missing { emitSessionCreated(session, workspace: workspaces[index].id) }
             if recent.focusMember == true { markFocusMember(workspaces[index].id) } // before the reselect, as above
             let target = recent.selectedSessionID.flatMap { id in
@@ -193,6 +200,7 @@ extension AppStore {
                                    workspaceIndex: Int,
                                    sessionIndex: Int,
                                    placement: SessionPlacement? = nil,
+                                   folder: ClosedFolder? = nil,
                                    id: UUID = UUID()) -> UUID? {
         guard let recentClosedStore, session.isPersistable else { return nil }
         recentClosedStore.record(RecentClosedItem(
@@ -204,7 +212,9 @@ extension AppStore {
                                          workspaceName: workspaceName,
                                          workspaceIndex: workspaceIndex,
                                          sessionIndex: sessionIndex,
-                                         snapshot: sessionSnapshot(session), placement: placement)
+                                         snapshot: sessionSnapshot(session),
+                                         placement: placement,
+                                         folder: folder)
         ))
         recentClosedDidChange?()
         return id

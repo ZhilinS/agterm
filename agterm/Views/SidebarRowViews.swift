@@ -55,7 +55,7 @@ final class SidebarCellView: NSTableCellView {
         field.toolTip = field.attributedStringValue.size().width > available ? field.stringValue : nil
     }
 
-    // hover tracking for the "+" reveal, workspace cells only (session cells have no button to show)
+    // hover tracking for the "+" reveal, workspace and folder cells only (session cells have no button to show)
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea); self.hoverTrackingArea = nil }

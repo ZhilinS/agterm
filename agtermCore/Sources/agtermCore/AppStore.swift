@@ -549,7 +549,8 @@ public final class AppStore {
         dropLaunchPanes([removed])
         recordRecentClosedSession(removed, workspaceID: workspace.id, workspaceName: workspace.name,
                                   workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex,
-                                  placement: workspace.placement(ofSession: sessionID))
+                                  placement: workspace.placement(ofSession: sessionID),
+                                  folder: workspace.closedFolder(ofSession: sessionID))
         finalizePaneIdentities([removed], alreadyFinalized: alreadyFinalized)
         removed.surface?.teardown()
         removed.splitSurface?.teardown()

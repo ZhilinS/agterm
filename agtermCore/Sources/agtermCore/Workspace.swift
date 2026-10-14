@@ -42,6 +42,32 @@ public struct SessionPlacement: Codable, Equatable, Sendable {
     }
 }
 
+/// A folder a close emptied and removed, to put it back empty at its `items` slot.
+public struct ClosedFolder: Codable, Equatable, Sendable {
+    public let id: UUID
+    public let name: String
+    public let isExpanded: Bool
+    public let itemIndex: Int
+
+    public init(id: UUID, name: String, isExpanded: Bool, itemIndex: Int) {
+        self.id = id
+        self.name = name
+        self.isExpanded = isExpanded
+        self.itemIndex = itemIndex
+    }
+
+    /// This slot once a loose `removed` before it will never be put back.
+    public func shifted(afterDropping removed: SessionPlacement) -> ClosedFolder {
+        guard removed.folderID == nil, removed.itemIndex < itemIndex else { return self }
+        return ClosedFolder(
+            id: id,
+            name: name,
+            isExpanded: isExpanded,
+            itemIndex: itemIndex - 1
+        )
+    }
+}
+
 public enum SessionAnchor: Equatable, Sendable {
     case after(UUID)
     case before(UUID)
@@ -126,7 +152,12 @@ public struct Workspace: Identifiable {
             case .folder(var folder):
                 guard let slot = folder.sessions.firstIndex(where: { $0.id == sessionID }) else { continue }
                 let session = folder.sessions.remove(at: slot)
-                items[index] = .folder(folder)
+                // a folder lives while it holds sessions: only `addFolder` makes an empty one
+                if folder.sessions.isEmpty {
+                    items.remove(at: index)
+                } else {
+                    items[index] = .folder(folder)
+                }
                 return session
             default:
                 continue
@@ -228,6 +259,52 @@ public struct Workspace: Identifiable {
         guard let index = itemIndex(ofFolder: folderID), case .folder(let folder) = items[index] else { return nil }
         items.remove(at: index)
         return folder
+    }
+
+    /// The session's folder as a close records it, so a restore can bring the folder back when closing its
+    /// last member removed it. Nil for a loose session.
+    public func closedFolder(ofSession sessionID: UUID) -> ClosedFolder? {
+        guard let folderID = container(ofSession: sessionID), let index = itemIndex(ofFolder: folderID),
+              let folder = folder(withID: folderID) else { return nil }
+        return ClosedFolder(
+            id: folder.id,
+            name: folder.name,
+            isExpanded: folder.isExpanded,
+            itemIndex: index
+        )
+    }
+
+    /// Puts a closed folder back, empty, at its slot; a no-op while it still exists.
+    public mutating func restoreFolder(_ closed: ClosedFolder) {
+        guard folder(withID: closed.id) == nil else { return }
+        addFolder(
+            SessionFolder(id: closed.id, name: closed.name, isExpanded: closed.isExpanded),
+            at: closed.itemIndex
+        )
+    }
+
+    /// Appends `other`'s items this workspace lacks, folders included: a session already in `live` is
+    /// skipped, a missing folder is recreated and its surviving members land inside it. Returns the sessions added.
+    @discardableResult
+    public mutating func absorb(_ other: Workspace, skipping live: Set<UUID>) -> [Session] {
+        var added: [Session] = []
+        for item in other.items {
+            switch item {
+            case .session(let session) where !live.contains(session.id):
+                appendSession(session)
+                added.append(session)
+            case .session:
+                continue
+            case .folder(let folder):
+                let members = folder.sessions.filter { !live.contains($0.id) }
+                if self.folder(withID: folder.id) == nil {
+                    addFolder(SessionFolder(id: folder.id, name: folder.name, isExpanded: folder.isExpanded))
+                }
+                for session in members { insertSession(session, inFolder: folder.id) }
+                added += members
+            }
+        }
+        return added
     }
 
     public mutating func renameFolder(_ folderID: UUID, to name: String) {

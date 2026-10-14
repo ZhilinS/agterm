@@ -45,15 +45,18 @@ public struct RecentClosedSession: Codable, Equatable, Sendable {
     public let snapshot: SessionSnapshot
     /// Optional so an entry written before folders still decodes; nil falls back to `sessionIndex`.
     public let placement: SessionPlacement?
+    /// The folder of `placement`, recreated when the close removed it. Optional for the same reason.
+    public let folder: ClosedFolder?
 
     public init(workspaceID: UUID, workspaceName: String, workspaceIndex: Int, sessionIndex: Int,
-                snapshot: SessionSnapshot, placement: SessionPlacement? = nil) {
+                snapshot: SessionSnapshot, placement: SessionPlacement? = nil, folder: ClosedFolder? = nil) {
         self.workspaceID = workspaceID
         self.workspaceName = workspaceName
         self.workspaceIndex = workspaceIndex
         self.sessionIndex = sessionIndex
         self.snapshot = snapshot
         self.placement = placement
+        self.folder = folder
     }
 }
 

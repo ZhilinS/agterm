@@ -42,14 +42,30 @@ struct WorkspaceItemsTests {
         #expect(fixture().sessions.map(\.customName) == ["a", "b", "c", "d"])
     }
 
-    @Test func removeSessionSearchesFoldersAndKeepsAnEmptiedFolder() {
+    @Test func removeSessionSearchesFoldersAndDropsAnEmptiedOne() {
         var workspace = fixture()
         let b = workspace.sessions[1], c = workspace.sessions[2], a = workspace.sessions[0]
         #expect(workspace.removeSession(id: b.id) === b)
+        #expect(shape(workspace) == "a F(c) d E()")
         #expect(workspace.removeSession(id: c.id) === c)
         #expect(workspace.removeSession(id: a.id) === a)
         #expect(workspace.removeSession(id: UUID()) == nil)
-        #expect(shape(workspace) == "F() d E()")
+        #expect(shape(workspace) == "d E()")
+    }
+
+    @Test func aClosedFolderComesBackEmptyAtItsSlotOnce() {
+        var workspace = fixture()
+        let b = workspace.sessions[1], c = workspace.sessions[2]
+        let closed = workspace.closedFolder(ofSession: c.id)!
+        #expect(closed.itemIndex == 1 && closed.name == "F")
+        #expect(workspace.closedFolder(ofSession: workspace.sessions[0].id) == nil)
+        workspace.removeSession(id: b.id)
+        workspace.removeSession(id: c.id)
+        workspace.restoreFolder(closed)
+        workspace.restoreFolder(closed)
+        #expect(shape(workspace) == "a F() d E()")
+        #expect(closed.shifted(afterDropping: SessionPlacement(itemIndex: 0)).itemIndex == 0)
+        #expect(closed.shifted(afterDropping: SessionPlacement(itemIndex: 3)) == closed)
     }
 
     @Test func containerNamesTheOwningFolder() {
@@ -95,7 +111,6 @@ struct WorkspaceItemsTests {
         workspace.removeSession(id: c.id)
         let b = workspace.sessions[1]
         workspace.removeSession(id: b.id)
-        workspace.removeFolder(id: workspace.folders[0].id)
         workspace.insertSession(c, at: placement)
         #expect(shape(workspace) == "a c d E()")
     }

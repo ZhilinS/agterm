@@ -125,6 +125,16 @@ final class RecentClosedTests {
         #expect(loaded[0].workspace?.focusMember == nil)
     }
 
+    @Test func sessionEntryWithoutAFolderStillDecodes() throws {
+        let data = try JSONEncoder().encode(RecentClosedState(items: [sessionItem(title: "a")]))
+        #expect(!String(decoding: data, as: UTF8.self).contains("folder")) // the legacy shape verbatim
+        try data.write(to: fileURL)
+
+        let loaded = RecentClosedStore(directory: directory).load()
+        #expect(loaded.count == 1)
+        #expect(loaded[0].session?.folder == nil)
+    }
+
     @Test func workspaceEntryWithALegacyFocusEnabledKeyStillDecodes() throws {
         // the other direction of the same rule: a DROPPED key must not fail the decode either.
         // `focusEnabled` was one — the reopen leg marks only, so nothing reads a stored filter flag.

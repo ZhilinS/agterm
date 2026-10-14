@@ -148,13 +148,13 @@ extension WorkspaceSidebar.Coordinator {
     /// notification badge. The name hugs and resists compression weakly while the icon and badge do so
     /// strongly, so the name truncates first and both stay whole.
     ///
-    /// Workspace cells also get an inline "+" (`cell.addButton`) between the name and the status icon,
-    /// revealed only on hover (the Finder/Xcode convention; `SidebarCellView.setAddButtonVisible`); it runs
-    /// `addSessionButtonClicked`, the same path as the right-click "New Session" item.
+    /// Workspace and folder cells also get an inline "+" (`cell.addButton`) between the name and the status
+    /// icon, revealed only on hover (the Finder/Xcode convention; `SidebarCellView.setAddButtonVisible`); it
+    /// runs `addSessionButtonClicked`, the same path as the right-click "New Session" item.
     private func makeCell(identifier: NSUserInterfaceItemIdentifier) -> SidebarCellView {
         let cell = SidebarCellView()
         cell.identifier = identifier
-        let isWorkspace = identifier.rawValue == "workspace-cell"
+        let hasAddButton = ["workspace-cell", "folder-cell"].contains(identifier.rawValue)
 
         let icon = NSImageView()
         icon.translatesAutoresizingMaskIntoConstraints = false
@@ -207,8 +207,10 @@ extension WorkspaceSidebar.Coordinator {
             badge.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ]
 
-        if isWorkspace {
-            let addBtn = makeAddSessionButton()
+        if hasAddButton {
+            let addBtn = makeAddSessionButton(
+                accessibilityIdentifier: identifier.rawValue == "folder-cell" ? "folder-add-session" : "workspace-add-session"
+            )
             cell.addSubview(addBtn)
             cell.addButton = addBtn
             // hover-revealed: starts hidden at zero width (setAddButtonVisible toggles the width
@@ -232,7 +234,7 @@ extension WorkspaceSidebar.Coordinator {
         return cell
     }
 
-    private func makeAddSessionButton() -> NSButton {
+    private func makeAddSessionButton(accessibilityIdentifier: String) -> NSButton {
         let btn = AddSessionButton()
         btn.translatesAutoresizingMaskIntoConstraints = false
         btn.isBordered = false
@@ -244,7 +246,7 @@ extension WorkspaceSidebar.Coordinator {
         btn.contentTintColor = .secondaryLabelColor
         btn.setContentHuggingPriority(.required, for: .horizontal)
         btn.setContentCompressionResistancePriority(.required, for: .horizontal)
-        btn.setAccessibilityIdentifier("workspace-add-session")
+        btn.setAccessibilityIdentifier(accessibilityIdentifier)
         btn.setAccessibilityLabel("New Session")
         btn.target = self
         btn.action = #selector(addSessionButtonClicked(_:))

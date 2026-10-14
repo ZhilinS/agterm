@@ -26,7 +26,10 @@ If you have upstream installed: `brew uninstall --cask agterm` first.
 
 - **Session folders.** One level of folders inside a workspace: `workspace → folder → session`.
   Create one from a session or workspace menu, drag sessions in and out, **Move to** any folder of any
-  workspace. `agtermctl tree` shows `folder: <name>`; nothing else in the control API changes.
+  workspace. A folder lives while it holds sessions: closing or moving out the last one removes it, and
+  Reopen Closed Item or Open Recent bring the folder back with the session. ⌘N and the hover `+` add a
+  session next to the active one, inside its folder when it has one.
+  `agtermctl tree` shows `folder: <name>`; nothing else in the control API changes.
   Upstream declined folders as a model change ([#293](https://github.com/umputun/agterm/discussions/293),
   [#397](https://github.com/umputun/agterm/pull/397),
   [#406](https://github.com/umputun/agterm/discussions/406)), hence a fork and not a PR.
