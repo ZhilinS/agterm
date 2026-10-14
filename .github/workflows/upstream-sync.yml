@@ -15,8 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      # ponytail: GITHUB_TOKEN-made PRs get no ci.yml run; add a SYNC_TOKEN PAT to get checks
+      # ponytail: with GITHUB_TOKEN the sync PR runs no ci.yml and a release touching .github/workflows
+      # cannot be pushed; a SYNC_TOKEN PAT with contents, pull-requests, issues and workflows write fixes both
       GH_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
       UPSTREAM: umputun/agterm
     steps:
       - uses: actions/checkout@v7
@@ -33,15 +35,19 @@ jobs:
           ref="refs/remotes/upstream/tags/$tag"
           git fetch upstream "+refs/tags/$tag:$ref"
           if git merge-base --is-ancestor "$ref" origin/master; then echo "already merged"; exit 0; fi
-          if git ls-remote --exit-code --heads origin "sync/$tag" >/dev/null; then echo "sync/$tag already pushed"; exit 0; fi
+          open_pr() {
+            [ -n "$(gh pr list --head "sync/$tag" --state open --json number -q '.[0].number')" ] && return 0
+            gh pr create --base master --head "sync/$tag" \
+              --title "Merge upstream $tag" \
+              --body "https://github.com/$UPSTREAM/releases/tag/$tag"
+          }
+          if git ls-remote --exit-code --heads origin "sync/$tag" >/dev/null; then open_pr; exit 0; fi
           git config user.name github-actions
           git config user.email github-actions@github.com
           git checkout -b "sync/$tag" origin/master
           if git merge --no-ff -m "Merge upstream $tag" "$ref"; then
             git push origin "sync/$tag"
-            gh pr create --base master --head "sync/$tag" \
-              --title "Merge upstream $tag" \
-              --body "https://github.com/$UPSTREAM/releases/tag/$tag"
+            open_pr
             exit 0
           fi
           conflicts="$(git diff --name-only --diff-filter=U)"
