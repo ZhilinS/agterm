@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.36.1 - 2026-10-13
+## v0.36.0-fork.1 - 2026-10-14
 
 First release of the [ZhilinS/agterm](https://github.com/ZhilinS/agterm) fork, on top of upstream v0.36.0.
 
