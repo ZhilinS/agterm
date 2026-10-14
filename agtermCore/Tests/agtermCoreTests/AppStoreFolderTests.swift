@@ -220,6 +220,47 @@ struct AppStoreFolderTests {
         #expect(shapeOf(store, ws) == "c F(a b)")
     }
 
+    @Test func movingEveryMemberPlusALooseSessionIntoTheirFolderKeepsIt() throws {
+        let (store, ws, s) = try fixture()
+        let folder = try #require(store.addFolder(toWorkspace: ws, name: "F", containing: [s[0].id]))
+        #expect(store.moveSessions([s[0].id, s[1].id], toFolder: folder.id) == 2)
+        #expect(shapeOf(store, ws) == "F(a b) c")
+    }
+
+    @Test func draggingTheLastMemberOutToALaterGapLandsInThatGap() throws {
+        let (store, ws, s) = try fixture()
+        store.addFolder(toWorkspace: ws, name: "F", containing: [s[0].id])
+        #expect(store.moveSessions([s[0].id], toWorkspace: ws, atItem: 2) == 1)
+        #expect(shapeOf(store, ws) == "b a c")
+    }
+
+    @Test func finalizingAMemberWhoseFolderAnotherRecordHoldsKeepsLaterSlots() throws {
+        let (store, ws, s) = try fixture()
+        let x = try #require(store.addSession(toWorkspace: ws, cwd: "/", name: "x"))
+        store.addFolder(toWorkspace: ws, name: "F", containing: [s[0].id, s[1].id])
+        #expect(shapeOf(store, ws) == "F(a b) c x")
+        #expect(store.softCloseSessions([s[0].id, s[2].id], grace: 60))
+        let batch = try #require(store.pendingCloseSummary?.id)
+        #expect(store.softCloseSession(s[1].id, grace: 60))
+        #expect(shapeOf(store, ws) == "x")
+        #expect(store.finalizePendingClose(ofSession: s[0].id))
+        #expect(store.undoPendingClose())
+        #expect(shapeOf(store, ws) == "F(b) x")
+        #expect(store.undoPendingClose(batch))
+        #expect(shapeOf(store, ws) == "F(b) c x")
+    }
+
+    @Test func finalizingTheLastMemberShiftsALaterFolderShell() throws {
+        let (store, ws, s) = try fixture()
+        store.addFolder(toWorkspace: ws, name: "F", containing: [s[0].id])
+        store.addFolder(toWorkspace: ws, name: "G", containing: [s[1].id])
+        #expect(shapeOf(store, ws) == "F(a) G(b) c")
+        #expect(store.softCloseSessions([s[0].id, s[1].id], grace: 60))
+        #expect(store.finalizePendingClose(ofSession: s[0].id))
+        #expect(store.undoPendingClose())
+        #expect(shapeOf(store, ws) == "G(b) c")
+    }
+
     @Test func newSessionAtEndStaysInTheSelectionsFolder() throws {
         let (store, ws, s) = try fixture()
         store.addFolder(toWorkspace: ws, name: "F", containing: [s[0].id, s[1].id])

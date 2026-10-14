@@ -310,8 +310,7 @@ extension AppStore {
                 // a survivor after the dropped member in the same workspace was saved one slot too far down;
                 // so is one after the member's folder when nothing will put that folder back
                 let folderGone = member.folder.map { shell in
-                    folder(withID: shell.id) == nil
-                        && !close.sessions.contains { $0.session.id != sessionID && $0.folder?.id == shell.id }
+                    folder(withID: shell.id) == nil && !pendingHoldsFolder(shell.id, besides: sessionID)
                 } ?? false
                 var dropped = [member.placement].compactMap { $0 }
                 if folderGone, let shell = member.folder {
@@ -424,6 +423,17 @@ extension AppStore {
         }
         pendingCloseOrder.removeAll { pendingCloseRecords[$0] == nil }
         return (folded, focusMember)
+    }
+
+    /// Whether any pending close would put folder `id` back: a member other than `sessionID` recorded in it,
+    /// or a closed workspace still holding it.
+    func pendingHoldsFolder(_ id: UUID, besides sessionID: UUID) -> Bool {
+        pendingCloseRecords.values.contains { record in
+            switch record {
+            case .sessions(let close): return close.sessions.contains { $0.session.id != sessionID && $0.folder?.id == id }
+            case .workspace(let close): return close.workspace.folder(withID: id) != nil
+            }
+        }
     }
 
     /// Whether a pending close is holding workspace `id`: the workspace itself, or a session recorded as

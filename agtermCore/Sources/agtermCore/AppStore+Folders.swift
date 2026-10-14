@@ -87,9 +87,14 @@ extension AppStore {
     @discardableResult
     public func moveSessions(_ sessionIDs: [UUID], toWorkspace targetID: UUID, atItem slot: Int) -> Int {
         guard let target = workspaces.firstIndex(where: { $0.id == targetID }) else { return 0 }
+        // the slot counts the target's folders as they stand; one this move empties is gone when the block lands
+        let emptiedAhead = workspaces[target].items.prefix(max(0, slot)).count { item in
+            guard case .folder(let folder) = item, !folder.sessions.isEmpty else { return false }
+            return folder.sessions.allSatisfy { sessionIDs.contains($0.id) }
+        }
         let moving = removeForMove(sessionIDs)
         for (offset, session) in moving.sessions.enumerated() {
-            workspaces[target].insertSession(session, atItem: slot + offset)
+            workspaces[target].insertSession(session, atItem: slot - emptiedAhead + offset)
         }
         finishMove(moving)
         return moving.sessions.count
@@ -116,8 +121,19 @@ extension AppStore {
     /// lands at `index` of the folder's post-removal list, nil appends. Returns the count moved.
     @discardableResult
     public func moveSessions(_ sessionIDs: [UUID], toFolder folderID: UUID, at index: Int? = nil) -> Int {
-        guard let target = workspaceIndex(ofFolder: folderID) else { return 0 }
+        guard let target = workspaceIndex(ofFolder: folderID),
+              let folder = workspaces[target].folder(withID: folderID),
+              let slot = workspaces[target].itemIndex(ofFolder: folderID) else { return 0 }
+        let ahead = workspaces[target].itemShape.prefix(slot).compactMap(\.first)
         let moving = removeForMove(sessionIDs)
+        // moving every member out drops the folder on the way; put it back where the survivors leave it
+        let survivors = Set(workspaces[target].itemShape.compactMap(\.first))
+        workspaces[target].restoreFolder(ClosedFolder(
+            id: folderID,
+            name: folder.name,
+            isExpanded: folder.isExpanded,
+            itemIndex: ahead.count(where: survivors.contains)
+        ))
         for (offset, session) in moving.sessions.enumerated() {
             workspaces[target].insertSession(session, inFolder: folderID, at: index.map { $0 + offset })
         }
