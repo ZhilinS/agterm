@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      # ponytail: with GITHUB_TOKEN the sync PR runs no ci.yml and a release touching .github/workflows
+      # ponytail: with GITHUB_TOKEN the sync PR's CI waits for approval and a release touching .github/workflows
       # cannot be pushed; a SYNC_TOKEN PAT with contents, pull-requests, issues and workflows write fixes both
       GH_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
@@ -36,7 +36,7 @@ jobs:
           git fetch upstream "+refs/tags/$tag:$ref"
           if git merge-base --is-ancestor "$ref" origin/master; then echo "already merged"; exit 0; fi
           open_pr() {
-            [ -n "$(gh pr list --head "sync/$tag" --state open --json number -q '.[0].number')" ] && return 0
+            [ -n "$(gh pr list --head "sync/$tag" --state all --json number -q '.[0].number')" ] && return 0
             gh pr create --base master --head "sync/$tag" \
               --title "Merge upstream $tag" \
               --body "https://github.com/$UPSTREAM/releases/tag/$tag"
