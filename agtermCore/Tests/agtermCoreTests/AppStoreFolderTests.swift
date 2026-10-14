@@ -234,6 +234,20 @@ struct AppStoreFolderTests {
         #expect(shapeOf(store, ws) == "b a c")
     }
 
+    @Test func aMixedDragPastTheFolderItEmptiesLandsWhereTheResolverSaid() throws {
+        let (store, ws, s) = try fixture()
+        let folder = try #require(store.addFolder(toWorkspace: ws, name: "F", containing: [s[1].id]))
+        #expect(shapeOf(store, ws) == "a F(b) c")
+        let drop = try #require(SidebarDrop.resolveSessions(
+            sources: [.init(workspace: ws, index: 0), .init(workspace: ws, folder: folder.id, index: 0)],
+            target: .workspaceRow(id: ws, sessionCount: 3),
+            childIndex: 2
+        ))
+        #expect(drop.destination == 1)
+        #expect(store.moveSessions([s[0].id, s[1].id], toWorkspace: ws, atItem: drop.destination) == 2)
+        #expect(shapeOf(store, ws) == "a b c")
+    }
+
     @Test func finalizingAMemberWhoseFolderAnotherRecordHoldsKeepsLaterSlots() throws {
         let (store, ws, s) = try fixture()
         let x = try #require(store.addSession(toWorkspace: ws, cwd: "/", name: "x"))

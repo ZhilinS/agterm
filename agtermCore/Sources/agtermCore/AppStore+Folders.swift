@@ -87,10 +87,23 @@ extension AppStore {
     @discardableResult
     public func moveSessions(_ sessionIDs: [UUID], toWorkspace targetID: UUID, atItem slot: Int) -> Int {
         guard let target = workspaces.firstIndex(where: { $0.id == targetID }) else { return 0 }
-        // the slot counts the target's folders as they stand; one this move empties is gone when the block lands
-        let emptiedAhead = workspaces[target].items.prefix(max(0, slot)).count { item in
-            guard case .folder(let folder) = item, !folder.sessions.isEmpty else { return false }
-            return folder.sessions.allSatisfy { sessionIDs.contains($0.id) }
+        // the slot is in `SidebarDrop`'s space: moving loose sessions already taken out, folders as they stand.
+        // one this move empties is gone when the block lands, so the slot comes down by one per such folder
+        let ids = Set(sessionIDs)
+        var position = 0
+        var emptiedAhead = 0
+        for item in workspaces[target].items where position < slot {
+            switch item {
+            case .session(let session) where ids.contains(session.id):
+                continue
+            case .session:
+                position += 1
+            case .folder(let folder):
+                if !folder.sessions.isEmpty, folder.sessions.allSatisfy({ ids.contains($0.id) }) {
+                    emptiedAhead += 1
+                }
+                position += 1
+            }
         }
         let moving = removeForMove(sessionIDs)
         for (offset, session) in moving.sessions.enumerated() {
