@@ -21,8 +21,8 @@ VERSION="${1:-}"
 PUBLISH=0
 [ "${2:-}" = "--publish" ] && PUBLISH=1
 
-if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "usage: scripts/release.sh <x.y.z> [--publish]" >&2
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-fork\.[0-9]+)?$ ]]; then
+  echo "usage: scripts/release.sh <x.y.z[-fork.N]> [--publish]" >&2
   exit 1
 fi
 
@@ -138,7 +138,7 @@ xcodegen generate >/dev/null
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 xcodebuild -project agterm.xcodeproj -scheme agterm -configuration Release \
   -derivedDataPath "$BUILD_DIR/DerivedData" \
-  MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$VERSION" GIT_COMMIT="$GIT_COMMIT" \
+  MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="${VERSION%%-*}" GIT_COMMIT="$GIT_COMMIT" \
   build
 [ -d "$APP" ] || { echo "expected app not found: $APP" >&2; exit 1; }
 

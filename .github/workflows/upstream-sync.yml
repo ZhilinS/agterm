@@ -1,0 +1,52 @@
+name: upstream sync
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # ponytail: GITHUB_TOKEN-made PRs get no ci.yml run; add a SYNC_TOKEN PAT to get checks
+      GH_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+      UPSTREAM: umputun/agterm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: merge latest upstream release
+        run: |
+          set -euo pipefail
+          tag="$(gh release view -R "$UPSTREAM" --json tagName -q .tagName)"
+          echo "latest upstream release: $tag"
+          git remote add upstream "https://github.com/$UPSTREAM.git"
+          # a fork tag may share the name (v0.36.1 exists here, not upstream), so never fetch into refs/tags
+          ref="refs/remotes/upstream/tags/$tag"
+          git fetch upstream "+refs/tags/$tag:$ref"
+          if git merge-base --is-ancestor "$ref" origin/master; then echo "already merged"; exit 0; fi
+          if git ls-remote --exit-code --heads origin "sync/$tag" >/dev/null; then echo "sync/$tag already pushed"; exit 0; fi
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git checkout -b "sync/$tag" origin/master
+          if git merge --no-ff -m "Merge upstream $tag" "$ref"; then
+            git push origin "sync/$tag"
+            gh pr create --base master --head "sync/$tag" \
+              --title "Merge upstream $tag" \
+              --body "https://github.com/$UPSTREAM/releases/tag/$tag"
+            exit 0
+          fi
+          conflicts="$(git diff --name-only --diff-filter=U)"
+          git merge --abort
+          title="upstream $tag: merge conflict"
+          if [ -z "$(gh issue list --state open --search "\"$title\" in:title" --json number -q '.[0].number')" ]; then
+            gh issue create --title "$title" --body "$(printf 'Conflicts merging %s into master:\n\n```\n%s\n```\n\nRelease: https://github.com/%s/releases/tag/%s' "$tag" "$conflicts" "$UPSTREAM" "$tag")"
+          fi

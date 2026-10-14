@@ -23,3 +23,6 @@ paths:
 - Manually set `site/index.html`'s `SoftwareApplication.softwareVersion` in that same pre-release push;
   `release.sh` does not edit it. Cloudflare Pages deploys `site/` on push, and the DMG links already use
   GitHub's latest release.
+- Fork releases are `x.y.z-fork.N` on top of upstream `x.y.z`; the tag, DMG, cask and manifests carry
+  the full string, `CURRENT_PROJECT_VERSION` only `x.y.z`. `.github/workflows/upstream-sync.yml` opens a
+  `sync/<tag>` PR per new upstream release and an issue when the merge conflicts.
