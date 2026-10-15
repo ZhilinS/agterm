@@ -22,10 +22,10 @@ final class SettingsUITests: XCTestCase {
         if let stateDir { try? FileManager.default.removeItem(at: stateDir) }
     }
 
-    func testSettingsWindowHasSixTabsAndThemePersists() throws {
+    func testSettingsWindowHasSevenTabsAndThemePersists() throws {
         app.typeKey(",", modifierFlags: .command)
 
-        for tab in ["General", "Appearance", "Interface", "Notifications", "Agent Status", "Key Mapping"] {
+        for tab in ["General", "Appearance", "Interface", "Notifications", "Agent Status", "Key Mapping", "Sharing"] {
             XCTAssertTrue(app.buttons[tab].firstMatch.waitForHittable(timeout: 12), "Settings should have a \(tab) tab")
         }
 

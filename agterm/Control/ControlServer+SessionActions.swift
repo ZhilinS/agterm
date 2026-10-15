@@ -139,6 +139,29 @@ extension ControlServer: ControlActions {
         }
     }
 
+    /// The Share button's control twin, minus the clipboard: the socket never writes it, the reply carries the link.
+    func shareSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) async -> ControlResponse {
+        guard PageSharing.shared.config != nil else {
+            return ControlResponse(ok: false, error: PageShareError.notConfigured)
+        }
+        let session: UUID
+        let path: String
+        switch resolver.resolveSessionTarget(target, window: window) {
+        case .failure(let response): return response
+        case .success(let (store, id)):
+            switch store.htmlOverlay(id, pane: pane) {
+            case .failure(let failure): return ControlResponse(ok: false, error: failure.message)
+            case .success(let page):
+                guard case .file(let file, _) = page.source else {
+                    return ControlResponse(ok: false, error: PageShareError.notFile)
+                }
+                (session, path) = (id, file)
+            }
+        }
+        let share = await PageSharing.shared.share(file: path, copyLink: false)
+        return share?.response(session: session) ?? ControlResponse(ok: false, error: PageShareError.notConfigured)
+    }
+
     private func paneOverlayFailure(_ failure: PaneOverlayOpenFailure, target: String?) -> ControlResponse {
         switch failure {
         case .unknownSession: return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")

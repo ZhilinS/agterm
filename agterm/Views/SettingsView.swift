@@ -5,17 +5,18 @@ import SwiftUI
 
 private let logger = Logger(subsystem: "com.umputun.agterm", category: "SettingsView")
 
-/// The Settings window (Cmd+,): six tabs — General (mouse, sessions, ghostty config), Appearance
+/// The Settings window (Cmd+,): seven tabs — General (mouse, sessions, ghostty config), Appearance
 /// (font/theme/cursor + window translucency + mute), Interface (per-element title-bar and sidebar chrome
 /// visibility), Notifications (banner / badge / attention toggles), Agent Status (sidebar glyph colors and
-/// shapes + blocked sound + auto-follow), and Key Mapping (config directory + keymap diagnostics + Reload).
+/// shapes + blocked sound + auto-follow), Key Mapping (config directory + keymap diagnostics + Reload), and
+/// Sharing (where an HTML page's Share publishes).
 /// Throughout, a control's binding maps its DEFAULT value back to nil so `settings.json` stays minimal.
 struct SettingsView: View {
     let model: SettingsModel
 
     /// Identifies each tab. The explicit selection binding keeps the window opening on General: without it
     /// SwiftUI's Settings scene persists the last tab to `selectedTabIndex` in defaults and restores it.
-    private enum Tab: Hashable { case general, appearance, interface, notifications, agentStatus, keyMapping }
+    private enum Tab: Hashable { case general, appearance, interface, notifications, agentStatus, keyMapping, sharing }
     @State private var selection: Tab = .general
 
     var body: some View {
@@ -38,6 +39,9 @@ struct SettingsView: View {
             KeyMappingSettingsView(model: model)
                 .tabItem { Label("Key Mapping", systemImage: "keyboard") }
                 .tag(Tab.keyMapping)
+            SharingSettingsView(model: model)
+                .tabItem { Label("Sharing", systemImage: "square.and.arrow.up") }
+                .tag(Tab.sharing)
         }
         .frame(width: 540, height: 680)
         // without this a process-launch reopen (see agtermApp's FB11763863 workaround) resurrects a stale

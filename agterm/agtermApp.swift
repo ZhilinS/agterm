@@ -110,6 +110,7 @@ struct agtermApp: App {
         _controlServer = State(initialValue: controlServer)
         actions.remoteAttacher = controlServer
         LinkOpener.shared.mode = { settingsModel.settings.effectiveLinkOpenMode }
+        PageSharing.shared.settings = { settingsModel.settings }
         LinkOpener.shared.overlay = { [weak controlServer] url, session in
             controlServer?.openLinkOverlay(url, session: session) ?? false
         }

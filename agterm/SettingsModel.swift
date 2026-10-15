@@ -347,6 +347,15 @@ final class SettingsModel {
     }
     /// Persist that the first-run welcome has been shown, so it never appears again on this state directory.
     func setWelcomeShown(_ value: Bool?) { settings.welcomeShown = value; try? settingsStore.save(settings) }
+    /// Persist where Share publishes; empty clears it. `PageSharing` reads it at each share.
+    func setShareGitLabURL(_ value: String) {
+        settings.shareGitLabURL = value.isEmpty ? nil : value
+        try? settingsStore.save(settings)
+    }
+    func setShareGitLabProject(_ value: String) {
+        settings.shareGitLabProject = value.isEmpty ? nil : value
+        try? settingsStore.save(settings)
+    }
     /// Persist the user-idle auto-follow timeout (nil = off) and push it into every open window's `AppStore`
     /// (a newly opened window seeds itself via `applyAutoFollow(to:)`).
     func setAutoFollowAttention(_ value: String?) {

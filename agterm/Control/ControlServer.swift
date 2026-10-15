@@ -502,8 +502,9 @@ final class ControlServer {
     /// Commands whose dispatch awaits an ssh round trip. `zmx.attach` re-resolves the remote first, so it
     /// carries the same wait; local `zmx.list` blocks too, but bounded, and stays inline to keep cache order.
     /// `session.restart` waits on process exits for seconds, while the shell it starts calls this socket.
+    /// `session.overlay.share` waits on GitLab.
     nonisolated private static func waitsOnNetwork(_ cmd: Command) -> Bool {
-        cmd == .zmxTree || cmd == .zmxAttach || cmd == .sessionRestart
+        cmd == .zmxTree || cmd == .zmxAttach || cmd == .sessionRestart || cmd == .sessionOverlayShare
     }
 
     /// Read bytes from `conn` up to (and excluding) the first newline. Returns nil on EOF-before-newline, a
@@ -594,7 +595,7 @@ final class ControlServer {
                 .sessionType, .sessionCopy,
                 .sessionPaste, .sessionSelectAll,
                 .sessionSearch, .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize,
-                .sessionOverlayReload, .sessionOverlayNavigate,
+                .sessionOverlayReload, .sessionOverlayNavigate, .sessionOverlayShare,
                 .sessionOverlayResult, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
                 .sessionBackground, .sessionText, .quick, .quickType, .quickText,
                 .windowNew, .windowList, .windowSelect, .windowGo,
