@@ -12,9 +12,9 @@ struct SharingSettingsView: View {
                     .accessibilityIdentifier("settings-share-gitlab-url")
                 TextField("Project", text: project, prompt: Text("group/project"))
                     .accessibilityIdentifier("settings-share-gitlab-project")
-                SecureField("Access token", text: token, prompt: Text("api scope"))
+                SecureField("Access token", text: token, prompt: Text("Maintainer, api scope"))
                     .accessibilityIdentifier("settings-share-gitlab-token")
-                Text("The token is kept in the Keychain. A shared page lands at <pages URL>/<id>/.")
+                Text("A project access token with the Maintainer role, which reading the Pages URL needs, and the api scope. It is kept in the Keychain. A shared page lands at <pages URL>/<id>/.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }

@@ -38,7 +38,7 @@ If you have upstream installed: `brew uninstall --cask agterm` first.
   double-click and the row responds to a single click at once.
 - **⌘-drag the quick terminal.** Drag the panel anywhere; the position is remembered per display until
   the next launch.
-- **Share an HTML page to GitLab Pages.** With a GitLab URL, project and token in Settings ▸ Sharing, a
+- **Share an HTML page to GitLab Pages.** With a GitLab URL, project and a Maintainer `api` token in Settings ▸ Sharing, a
   file page's strip gets Share: it copies a stable link and publishes the page; `agtermctl session overlay
   share` does the same from a script.
 
