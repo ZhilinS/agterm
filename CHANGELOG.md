@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.36.0-fork.3 - 2026-10-15
+
+### New
+
+- **Share an HTML page to GitLab Pages.** With a GitLab URL, project and a Maintainer `api` token in Settings ▸ Sharing, a file page's strip gets Share: a click copies the page's link and publishes it, the button spins while the pipeline deploys (a click opens the pipeline) and shows GitLab's error if it fails. The same file always gets the same link, and an unchanged page publishes nothing. `agtermctl session overlay share` does the same from a script; `tree` reads it back as `htmlOverlays[].share`. Without these settings the button does not appear.
+
 ## v0.36.0-fork.2 - 2026-10-14
 
 ### Improved
