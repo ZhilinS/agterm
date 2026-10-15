@@ -119,6 +119,14 @@ extension ControlDispatcher {
         }
     }
 
+    func dispatchSessionOverlayShare(_ request: ControlRequest) async -> ControlResponse {
+        switch parseOverlayPane(request.args?.pane) {
+        case .rejected(let response): return response
+        case .pane(let pane):
+            return await actions.shareSessionOverlay(request.target, window: request.args?.window, pane: pane)
+        }
+    }
+
     private enum OverlayContent {
         case rejected(ControlResponse)
         case program

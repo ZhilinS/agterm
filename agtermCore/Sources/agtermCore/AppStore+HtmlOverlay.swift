@@ -142,9 +142,11 @@ extension AppStore {
             + OverlayPane.allCases.map { ($0.rawValue, session.paneOverlay($0)?.html) }
         let nodes = slots.compactMap { pane, page in
             page.map { page in
-                var file: String?, cwd: String?, url: String?
+                var file: String?, cwd: String?, url: String?, share: ControlPageShareNode?
                 switch page.source {
-                case .file(let path, let grantRoot): (file, cwd) = (path, grantRoot)
+                case .file(let path, let grantRoot):
+                    (file, cwd) = (path, grantRoot)
+                    share = PageShares.shared.share(forFile: path)?.node
                 case .url(let address): url = address.absoluteString
                 }
                 return ControlHtmlOverlayNode(pane: pane, file: file, cwd: cwd, url: url, state: page.loadState.rawValue,
@@ -152,13 +154,14 @@ extension AppStore {
                                               canGoBack: page.current?.canGoBack, canGoForward: page.current?.canGoForward,
                                               navigation: page.navigation ? true : nil, javascript: page.javascript,
                                               chromeless: page.chromeless, zoom: zoom, id: page.id.uuidString,
-                                              persistent: page.persistent, browse: page.browse)
+                                              persistent: page.persistent, browse: page.browse, share: share)
             }
         }
         return nodes.isEmpty ? nil : nodes
     }
 
-    private func htmlOverlay(_ sessionID: UUID, pane: OverlayPane?) -> Result<HtmlOverlay, HtmlOverlayCommandFailure> {
+    /// htmlOverlay is the page in the slot `pane` addresses, or why that slot holds none.
+    public func htmlOverlay(_ sessionID: UUID, pane: OverlayPane?) -> Result<HtmlOverlay, HtmlOverlayCommandFailure> {
         guard let session = session(withID: sessionID) else { return .failure(.unknownSession) }
         let occupied = pane.map { session.paneOverlay($0) != nil } ?? (session.overlayActive && !session.hudActive)
         guard occupied else { return .failure(.noOverlay) }

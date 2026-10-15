@@ -49,6 +49,7 @@ public enum Command: String, Codable, Sendable {
     case sessionOverlayResize = "session.overlay.resize"
     case sessionOverlayReload = "session.overlay.reload"
     case sessionOverlayNavigate = "session.overlay.navigate"
+    case sessionOverlayShare = "session.overlay.share"
     case sessionOverlayResult = "session.overlay.result"
     case sessionOverlaySubmit = "session.overlay.submit"
     case sessionOverlayCopy = "session.overlay.copy"
@@ -607,6 +608,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var pageOutcome: ControlHtmlPageOutcome?
     /// restart is what `session.restart` replaced: the pane's stable id and its shell before and after.
     public var restart: ControlRestartReceipt?
+    /// share is where `session.overlay.share` left the page.
+    public var share: ControlPageShareNode?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
@@ -621,8 +624,10 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 liveReset: ControlLiveResetStatus? = nil,
                 width: Int? = nil, height: Int? = nil,
                 pageID: String? = nil, pageOutcome: ControlHtmlPageOutcome? = nil,
-                restart: ControlRestartReceipt? = nil, installed: AppIdentity? = nil) {
+                restart: ControlRestartReceipt? = nil, installed: AppIdentity? = nil,
+                share: ControlPageShareNode? = nil) {
         self.restart = restart
+        self.share = share
         self.installed = installed
         self.width = width
         self.height = height

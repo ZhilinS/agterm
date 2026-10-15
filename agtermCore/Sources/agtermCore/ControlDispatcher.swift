@@ -117,6 +117,8 @@ public protocol ControlActions {
     func reloadSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, current: Bool) -> ControlResponse
     func navigateSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?,
                                 navigation: HtmlNavigation) -> ControlResponse
+    /// Publishes the addressed file page to GitLab Pages; the reply comes once the commit landed, before the pipeline.
+    func shareSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) async -> ControlResponse
     func sessionOverlayResult(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse
     /// Answers the page in the addressed slot with `value` and closes it; `session.overlay.result --page` reads it.
     func submitSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, value: String) -> ControlResponse
@@ -235,6 +237,8 @@ public struct ControlDispatcher {
                 .sessionOverlayResult, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
                 .sessionBackground, .sessionText:
             return await dispatchSessionSurfaceCommand(request)
+        case .sessionOverlayShare:
+            return await dispatchSessionOverlayShare(request)
         case .sessionOverlayJobRun:
             return dispatchSessionOverlayCommand(request)
         case .workspaceNew, .workspaceSelect, .workspaceGo, .workspaceRename, .workspaceDelete,

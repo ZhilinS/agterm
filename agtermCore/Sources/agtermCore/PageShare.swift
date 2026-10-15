@@ -1,0 +1,287 @@
+import CryptoKit
+import Foundation
+import Observation
+
+/// PageShareConfig is where `session.overlay.share` publishes: a GitLab instance, a project path or id, and an
+/// access token. nil unless all three are set, which is also what shows the Share button.
+public struct PageShareConfig: Equatable, Sendable {
+    public let baseURL: String
+    public let project: String
+    public let token: String
+
+    public init?(gitLabURL: String?, project: String?, token: String?) {
+        guard var base = gitLabURL?.trimmedOrNil,
+              let project = project?.trimmedOrNil,
+              let token = token?.trimmedOrNil else { return nil }
+        while base.hasSuffix("/") {
+            base.removeLast()
+        }
+        self.baseURL = base
+        self.project = project
+        self.token = token
+    }
+}
+
+/// GitLabTransport sends one GitLab API request and returns its body and HTTP status.
+public protocol GitLabTransport: Sendable {
+    func send(_ request: URLRequest) async throws -> (Data, Int)
+}
+
+public enum PageShareState: String, Sendable {
+    case idle, publishing, failed
+}
+
+/// PageShare is one page's share: its link once known, where it stands, the pipeline deploying it, and why it
+/// failed.
+public struct PageShare: Equatable, Sendable {
+    public var url: String?
+    public var state: PageShareState
+    public var pipelineURL: String?
+    public var error: String?
+
+    public var node: ControlPageShareNode {
+        ControlPageShareNode(url: url, state: state.rawValue, pipelineURL: pipelineURL, error: error)
+    }
+
+    /// response is the `session.overlay.share` reply: the link as text and the share in full, or the failure.
+    public func response(session: UUID) -> ControlResponse {
+        if state == .failed {
+            return ControlResponse(ok: false, error: error)
+        }
+        return ControlResponse(ok: true, result: ControlResult(id: session.uuidString, text: url, share: node))
+    }
+}
+
+/// ControlPageShareNode is a page's share as `tree` (`htmlOverlays[].share`) and `session.overlay.share` report it.
+public struct ControlPageShareNode: Codable, Sendable, Equatable {
+    public let url: String?
+    /// state is `idle`, `publishing` or `failed`.
+    public let state: String
+    public let pipelineURL: String?
+    public let error: String?
+
+    public init(url: String?, state: String, pipelineURL: String? = nil, error: String? = nil) {
+        self.url = url
+        self.state = state
+        self.pipelineURL = pipelineURL
+        self.error = error
+    }
+}
+
+public enum PageShareError {
+    public static let notConfigured = "sharing is not configured: set the GitLab URL, project and token in Settings > Sharing"
+    public static let notFile = "only a file page can be shared"
+    static let timedOut = "the pipeline did not finish in 5 minutes"
+}
+
+/// PageShares publishes file pages to GitLab Pages and keeps each share in memory by `id(forFile:)`, so a file
+/// shared again lands on the same URL and the button, the tree and the control reply read one state.
+@MainActor
+@Observable
+public final class PageShares {
+    public static let shared = PageShares()
+
+    public internal(set) var shares: [String: PageShare] = [:]
+    @ObservationIgnored var pollInterval: Duration = .milliseconds(2500)
+    @ObservationIgnored var pollLimit: Duration = .seconds(300)
+    @ObservationIgnored private var pagesURLs: [String: String] = [:]
+
+    init() {}
+
+    /// id is the first 12 hex digits of the SHA-256 of the standardized path: the page's folder on GitLab Pages.
+    public static func id(forFile path: String) -> String {
+        String(sha256(Data(URL(fileURLWithPath: path).standardizedFileURL.path.utf8)).prefix(12))
+    }
+
+    public func share(forFile path: String) -> PageShare? {
+        shares[Self.id(forFile: path)]
+    }
+
+    /// publish puts the file at `path` on GitLab Pages, handing its link to `onLink` before anything is uploaded.
+    /// It returns once the commit landed, or at once when GitLab already holds these bytes, and polls the
+    /// pipeline after that. A share still publishing is returned as it is.
+    @discardableResult
+    public func publish(file path: String, config: PageShareConfig, transport: any GitLabTransport,
+                        onLink: (String) -> Void = { _ in }) async -> PageShare {
+        let id = Self.id(forFile: path)
+        if let current = shares[id], current.state == .publishing {
+            return current
+        }
+        var share = PageShare(url: shares[id]?.url, state: .publishing)
+        shares[id] = share
+        let gitLab = GitLab(config: config, transport: transport)
+        do {
+            let url = try await pagesURL(gitLab) + "/\(id)/"
+            share.url = url
+            shares[id] = share
+            onLink(url)
+            let content = try Data(contentsOf: URL(fileURLWithPath: path))
+            let file = "snippets/\(id)/index.html"
+            let published = try await gitLab.fileSHA(file)
+            if published == Self.sha256(content) {
+                share.state = .idle
+            } else {
+                let commit = try await gitLab.commit(file: file, content: content, create: published == nil,
+                                                     message: "Share \(URL(fileURLWithPath: path).lastPathComponent)")
+                let finished = try await gitLab.pipeline(sha: commit).map { Self.advance(&share, $0) } ?? false
+                if !finished {
+                    Task { await poll(id, commit: commit, gitLab: gitLab) }
+                }
+            }
+        } catch {
+            share.state = .failed
+            share.error = error.localizedDescription
+        }
+        shares[id] = share
+        return share
+    }
+
+    private func pagesURL(_ gitLab: GitLab) async throws -> String {
+        let key = "\(gitLab.config.baseURL)|\(gitLab.config.project)"
+        if let cached = pagesURLs[key] {
+            return cached
+        }
+        var url = try await gitLab.pagesURL()
+        while url.hasSuffix("/") {
+            url.removeLast()
+        }
+        pagesURLs[key] = url
+        return url
+    }
+
+    private func poll(_ id: String, commit: String, gitLab: GitLab) async {
+        let deadline = ContinuousClock.now + pollLimit
+        while ContinuousClock.now < deadline {
+            try? await Task.sleep(for: pollInterval)
+            guard var share = shares[id] else { return }
+            do {
+                guard let pipeline = try await gitLab.pipeline(sha: commit) else { continue }
+                let finished = Self.advance(&share, pipeline)
+                shares[id] = share
+                if finished { return }
+            } catch {
+                shares[id]?.state = .failed
+                shares[id]?.error = error.localizedDescription
+                return
+            }
+        }
+        shares[id]?.state = .failed
+        shares[id]?.error = PageShareError.timedOut
+    }
+
+    /// advance records what the pipeline says and returns whether it finished.
+    private static func advance(_ share: inout PageShare, _ pipeline: GitLab.Pipeline) -> Bool {
+        share.pipelineURL = pipeline.webUrl
+        switch pipeline.status {
+        case "success":
+            share.state = .idle
+            return true
+        case "failed", "canceled", "skipped":
+            share.state = .failed
+            share.error = "pipeline \(pipeline.status)"
+            return true
+        default:
+            return false
+        }
+    }
+
+    static func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// GitLab is the handful of project API calls a share makes, all on `branch`.
+struct GitLab: Sendable {
+    static let branch = "main"
+    let config: PageShareConfig
+    let transport: any GitLabTransport
+
+    struct Pipeline: Decodable {
+        let status: String
+        let webUrl: String
+    }
+
+    func pagesURL() async throws -> String {
+        struct Pages: Decodable { let url: String }
+        return try decode(Pages.self, try await call("GET", "pages")).url
+    }
+
+    /// fileSHA is the SHA-256 GitLab holds for `file` on the branch, nil when the file is not there.
+    func fileSHA(_ file: String) async throws -> String? {
+        struct File: Decodable { let contentSha256: String }
+        do {
+            return try decode(File.self, try await call("GET", "repository/files/\(Self.encode(file))?ref=\(Self.branch)"))
+                .contentSha256
+        } catch let error as GitLabError where error.status == 404 {
+            return nil
+        }
+    }
+
+    /// commit writes `content` to `file` in one commit and returns the commit id.
+    func commit(file: String, content: Data, create: Bool, message: String) async throws -> String {
+        struct Commit: Decodable { let id: String }
+        let action: [String: String] = [
+            "action": create ? "create" : "update",
+            "file_path": file,
+            "content": content.base64EncodedString(),
+            "encoding": "base64",
+        ]
+        let body: [String: Any] = ["branch": Self.branch, "commit_message": message, "actions": [action]]
+        let data = try await call("POST", "repository/commits", body: try JSONSerialization.data(withJSONObject: body))
+        return try decode(Commit.self, data).id
+    }
+
+    /// pipeline is the newest pipeline for `sha`, nil until GitLab has created one.
+    func pipeline(sha: String) async throws -> Pipeline? {
+        try decode([Pipeline].self, try await call("GET", "pipelines?sha=\(sha)")).first
+    }
+
+    private func call(_ method: String, _ path: String, body: Data? = nil) async throws -> Data {
+        let address = "\(config.baseURL)/api/v4/projects/\(Self.encode(config.project))/\(path)"
+        guard let url = URL(string: address) else { throw GitLabError(message: "invalid GitLab URL: \(config.baseURL)") }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue(config.token, forHTTPHeaderField: "PRIVATE-TOKEN")
+        if let body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        let (data, status) = try await transport.send(request)
+        guard (200..<300).contains(status) else { throw GitLabError(status: status, body: data) }
+        return data
+    }
+
+    private func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(type, from: data)
+    }
+
+    /// encode makes `value` one path segment, as GitLab wants a project path and a file path.
+    static func encode(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? value
+    }
+}
+
+/// GitLabError carries GitLab's own message for a refused call.
+struct GitLabError: LocalizedError {
+    let message: String
+    let status: Int?
+
+    var errorDescription: String? { message }
+
+    init(message: String) {
+        self.message = message
+        status = nil
+    }
+
+    init(status: Int, body: Data) {
+        let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+        let detail = json?["message"].map { "\($0)" }
+            ?? json?["error_description"] as? String
+            ?? json?["error"] as? String
+            ?? HTTPURLResponse.localizedString(forStatusCode: status)
+        message = "GitLab \(status): \(detail)"
+        self.status = status
+    }
+}

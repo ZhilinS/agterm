@@ -127,7 +127,8 @@ struct HtmlBridgeTests {
     }
 
     @Test func thePaneIsFilledOnlyForThePagesOwnOverlayCommands() throws {
-        for cmd in ["session.overlay.close", "session.overlay.reload", "session.overlay.navigate", "session.overlay.submit"] {
+        for cmd in ["session.overlay.close", "session.overlay.reload", "session.overlay.navigate", "session.overlay.submit",
+                    "session.overlay.share"] {
             let built = try request(#"{"cmd":"\#(cmd)"}"#)
             #expect(built.target == session.uuidString, "\(cmd)")
             #expect(built.args?.pane == "right", "\(cmd)")

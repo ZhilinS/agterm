@@ -352,6 +352,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Whether the first-launch pointer at the Help menu extras has been shown; nil/false = not yet.
     /// Written once, by the launch that shows it. See `FirstRunWelcome`.
     public var welcomeShown: Bool?
+    /// shareGitLabURL and shareGitLabProject say where Share publishes a page; the token is in the Keychain.
+    public var shareGitLabURL: String?
+    public var shareGitLabProject: String?
 
     public init(fontFamily: String? = nil, fontSize: Double? = nil, theme: String? = nil,
                 darkTheme: String? = nil, followSystemAppearance: Bool? = nil,
@@ -378,7 +381,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 hiddenInterfaceElements: [String]? = nil, shownInterfaceElements: [String]? = nil,
                 autoHideSidebarInactiveWindows: Bool? = nil, flaggedViewLayout: String? = nil,
                 linkOpenMode: String? = nil, terminalInputSource: String? = nil,
-                htmlOverlayZoom: Double? = nil, welcomeShown: Bool? = nil) {
+                htmlOverlayZoom: Double? = nil, welcomeShown: Bool? = nil,
+                shareGitLabURL: String? = nil, shareGitLabProject: String? = nil) {
         self.fontFamily = fontFamily
         self.fontSize = fontSize
         self.theme = theme
@@ -431,6 +435,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.terminalInputSource = terminalInputSource
         self.htmlOverlayZoom = htmlOverlayZoom
         self.welcomeShown = welcomeShown
+        self.shareGitLabURL = shareGitLabURL
+        self.shareGitLabProject = shareGitLabProject
     }
 
     /// The configured mode, including an object decoded from the legacy boolean schema.

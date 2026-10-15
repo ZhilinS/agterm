@@ -656,6 +656,28 @@ struct AppStoreTreeProjectionTests {
         }
     }
 
+    @Test func aSharedFilePageReportsItsShare() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        let path = "/tmp/a/shared-\(UUID().uuidString).html"
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: HtmlOverlay(source: .file(path: path, grantRoot: nil)),
+                                      sizePercent: nil) == nil)
+        let notShared = try #require(store.controlTree().workspaces[0].sessions[0].htmlOverlays?.first)
+        #expect(notShared.share == nil)
+        #expect(!String(decoding: try JSONEncoder().encode(notShared), as: UTF8.self).contains(#""share""#))
+
+        let id = PageShares.id(forFile: path)
+        PageShares.shared.shares[id] = PageShare(url: "https://pages/\(id)/", state: .failed, pipelineURL: "https://p/1",
+                                                 error: "pipeline failed")
+        defer { PageShares.shared.shares[id] = nil }
+
+        let node = try #require(store.controlTree().workspaces[0].sessions[0].htmlOverlays?.first)
+        #expect(node.share == ControlPageShareNode(url: "https://pages/\(id)/", state: "failed", pipelineURL: "https://p/1",
+                                                   error: "pipeline failed"))
+        #expect(try JSONDecoder().decode(ControlHtmlOverlayNode.self, from: JSONEncoder().encode(node)) == node)
+    }
+
     @Test func htmlOverlaysReportTheAppZoom() throws {
         let store = makeStore()
         let workspace = store.addWorkspace(name: "work")

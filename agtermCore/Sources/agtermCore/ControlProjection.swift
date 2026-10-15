@@ -447,12 +447,16 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
     public let zoom: Double?
     /// id is the page's identity, the one `session.overlay.result --page` reads; an older server omits it.
     public let id: String?
+    /// share is the file's GitLab Pages share, omitted until it is shared.
+    public let share: ControlPageShareNode?
 
     public init(pane: String?, file: String? = nil, cwd: String? = nil, url: String? = nil, state: String,
                 error: String?, page: String? = nil, title: String? = nil, canGoBack: Bool? = nil,
                 canGoForward: Bool? = nil, navigation: Bool? = nil, javascript: Bool = false, chromeless: Bool = false,
-                zoom: Double? = nil, id: String? = nil, persistent: Bool = false, browse: Bool = false) {
+                zoom: Double? = nil, id: String? = nil, persistent: Bool = false, browse: Bool = false,
+                share: ControlPageShareNode? = nil) {
         self.id = id
+        self.share = share
         self.pane = pane
         self.file = file
         self.cwd = cwd
@@ -473,7 +477,7 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case pane, file, cwd, url, state, error, page, title, canGoBack, canGoForward, navigation, javascript
-        case chromeless, persistent, browse, zoom, id
+        case chromeless, persistent, browse, zoom, id, share
     }
 
     public init(from decoder: Decoder) throws {
@@ -495,6 +499,7 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
         browse = try c.decodeIfPresent(Bool.self, forKey: .browse) ?? false
         zoom = try c.decodeIfPresent(Double.self, forKey: .zoom)
         id = try c.decodeIfPresent(String.self, forKey: .id)
+        share = try c.decodeIfPresent(ControlPageShareNode.self, forKey: .share)
     }
 }
 

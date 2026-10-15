@@ -67,6 +67,25 @@ extension Session.Overlay {
     }
 }
 
+extension Session.Overlay {
+    struct Share: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Publish a file overlay to GitLab Pages and print its link; the pipeline deploys it after the reply.",
+            discussion: "Settings > Sharing names the GitLab project. The same file always gets the same link.")
+        @Option(name: .long, help: "Share that split pane's page (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
+        var pane: String?
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func validate() throws { try Session.Overlay.validatePane(pane) }
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sessionOverlayShare, target: target.target,
+                           args: options.withWindow(pane.map { ControlArgs(pane: $0) }))
+        }
+    }
+}
+
 extension Session.Overlay.Open {
     static let blockHelp: ArgumentHelp = """
         Block until COMMAND exits and exit with its status (the program renders normally; capture its output via the \

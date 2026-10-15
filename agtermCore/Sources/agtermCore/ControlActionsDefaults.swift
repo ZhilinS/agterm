@@ -14,6 +14,10 @@ public extension ControlActions {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.overlay.navigate"))
     }
 
+    func shareSessionOverlay(_: String?, window _: String?, pane _: OverlayPane?) async -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.overlay.share"))
+    }
+
     func submitSessionOverlay(_: String?, window _: String?, pane _: OverlayPane?, value _: String) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.overlay.submit"))
     }

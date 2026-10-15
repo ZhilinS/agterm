@@ -569,6 +569,20 @@ struct ControlDispatcherOverlayTests {
         #expect(actions.calls == [.overlayNavigate(target: "session", window: nil, pane: .left, navigation)])
     }
 
+    @Test func shareRoutesThePaneAndRejectsAnUnknownOne() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionOverlayShare, target: "session",
+                                                     args: ControlArgs(window: "win", pane: "split")))
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionOverlayShare))
+        let bad = await dispatcher.dispatch(ControlRequest(cmd: .sessionOverlayShare, args: ControlArgs(pane: "middle")))
+
+        #expect(bad == ControlResponse(ok: false, error: PaneOverlayError.invalidPane))
+        #expect(actions.calls == [.overlayShare(target: "session", window: "win", pane: .right),
+                                  .overlayShare(target: nil, window: nil, pane: nil)])
+    }
+
     @Test(arguments: [(String?.none, OverlayHtmlError.navigation), ("up", OverlayHtmlError.navigation), ("copy", OverlayHtmlError.navigation)])
     func navigateRejectsAMissingOrUnknownStep(_ name: String?, _ error: String) async {
         let actions = MockControlActions()
