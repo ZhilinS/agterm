@@ -16,7 +16,7 @@ description: >
 when_to_use: >
   Trigger on: agterm, agtermctl, AGTERM_SESSION_ID, and, from inside a session, plain requests such as
   split the pane, close the overlay, show a message over the session, show a question dialog, agtermctl ask,
-  show an image inline, show this HTML page or artifact, make an HTML page or explainer for this and show
+  show an image inline, show this HTML page or artifact, share this page with the team, make an HTML page or explainer for this and show
   it, make a page that switches sessions or returns a choice, preview the report you generated, show this URL or the running dev server, keep me logged in to a page shown in an overlay, search the scrollback, run my custom command, tell me when the selected session changes, attach a session from another Mac, copy this to the clipboard, was agterm upgraded under the running app, upgrade agterm without losing sessions, what recipes are there,
   the keymap editor will not open.
 allowed-tools: Bash(agtermctl *)
@@ -773,6 +773,8 @@ agtermctl session overlay reload --target "$AGTERM_SESSION_ID"   # after rewriti
   `--navigation` adds back, forward, reload, open in browser, and Show in Finder for a file or Copy Link
   for a URL; use it when the page links to other pages.
   `session overlay navigate finder` reveals the current file; scripts read a URL from `tree`'s `htmlOverlays[].page`.
+- `session overlay share` publishes a file page to GitLab Pages, when Settings > Sharing names a project,
+  and prints the link to give teammates; see `reference.md`.
 - `--chromeless` (file pages only, not with `--navigation`) drops the strip, for a dashboard or monitor
   meant to look native. The user then closes it with ⌘W, so give such a page its own
   `data-agterm="session.overlay.close"` button when it is not self-evident.

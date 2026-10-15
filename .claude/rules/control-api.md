@@ -165,7 +165,7 @@ renumbering. Do not reintroduce a count anywhere.
   `.split.close`, `.swap`, `.lead`,
   `.scratch`, `.focus`, `.resize`, `.go`, `.copy`, `.paste`, `.selectall`, `.text`, `.search`, `.status`,
   `.flag`, `.seen`, `.restore`, `.restart`, `.background`, `.overlay.open`, `.overlay.close`, `.overlay.resize`,
-  `.overlay.reload`, `.overlay.navigate`,
+  `.overlay.reload`, `.overlay.navigate`, `.overlay.share`,
   `.overlay.result`, `.overlay.submit`, `.overlay.copy`, `.overlay.text`, `.overlay.job.run`, `.hud.open`, `.hud.update`,
   `.hud.close`
 - `surface.zoom`, `surface.cursor`, `dashboard`, `pick.open`, `pick.result`, `pick.cancel`,
@@ -627,6 +627,16 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `HtmlSharing` isolates Finder and clipboard effects for hosted tests.
   A page never takes the remote program-job path:
   `open --html` is refused while a presenter owns the session, and one already open stays local.
+- Share publishes a FILE page to GitLab Pages.
+  `PageShares` (`agtermCore`) keys the share by `PageShares.id(forFile:)`, a hash of the standardized
+  path, so one file keeps one link, and holds it in memory only.
+  The toolbar button and `overlay.share` both run `PageSharing.share`; only the button copies the link,
+  since the socket never writes the clipboard.
+  The command leaves the accept thread like `zmx.tree`, replies once the commit landed and before the
+  pipeline, and reads back as `htmlOverlays[].share`.
+  The poll gives up after five minutes, so a pipeline that never runs cannot leave the spinner up.
+  No `tree.changed`: a share is not a slot change.
+  The token is a Keychain generic password per bundle id, never in settings.
 - A FILE page drives the control API from its own content; `site/docs.html#page-bridge` owns the user
   contract. Pages are self-authored and trusted like a program overlay, which already inherits
   `AGTERM_SOCKET`, so there are no permission tiers; a URL page gets none of it. Two surfaces, one path:
