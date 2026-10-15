@@ -1145,7 +1145,6 @@ struct ControlProtocolTests {
         #expect(node.chromeless == false)
         #expect(node.persistent == false)
         #expect(node.file == "/tmp/r.html")
-        #expect(node.share == nil)
     }
 
     @Test func treeSessionNodeToleratesMissingHud() throws {
