@@ -12,29 +12,29 @@ struct QuickTerminalMetricsTests {
 
     /// A 32" 4K display in points, the case from the report that motivated the setting.
     private let large = WindowGeometry.Size(width: 2560, height: 1440)
-    /// A small external display in points, under the roughly 1222x780 where the built-in maximum takes
-    /// over, so the default share binds on both axes. Every current built-in panel is above that.
+    /// A small external display in points, under the roughly 1111 of shorter side where the built-in
+    /// maximum takes over, so the default share binds.
     private let small = WindowGeometry.Size(width: 1200, height: 760)
 
     @Test func defaultCapsALargeScreenAtTheBuiltInMaximum() {
-        expectSize(QuickTerminalMetrics.panelSize(visible: large, sizePercent: nil), 1100, 700)
+        expectSize(QuickTerminalMetrics.panelSize(visible: large, sizePercent: nil), 1000, 750)
     }
 
     @Test func defaultTakesTheShareWhenItFallsUnderTheMaximum() {
-        expectSize(QuickTerminalMetrics.panelSize(visible: small, sizePercent: nil), 1080, 684)
+        expectSize(QuickTerminalMetrics.panelSize(visible: small, sizePercent: nil), 684, 513)
     }
 
-    @Test func defaultMixesShareAndMaximumPerAxis() {
+    @Test func defaultTakesTheWidthFromTheShorterSide() {
         let visible = WindowGeometry.Size(width: 2000, height: 600)
-        expectSize(QuickTerminalMetrics.panelSize(visible: visible, sizePercent: nil), 1100, 540)
+        expectSize(QuickTerminalMetrics.panelSize(visible: visible, sizePercent: nil), 540, 405)
     }
 
     @Test func setPercentageReplacesTheMaximumInsteadOfRaisingIt() {
-        expectSize(QuickTerminalMetrics.panelSize(visible: large, sizePercent: 70), 1792, 1008)
+        expectSize(QuickTerminalMetrics.panelSize(visible: large, sizePercent: 70), 1008, 756)
     }
 
     @Test func setPercentageAppliesToASmallScreenToo() {
-        expectSize(QuickTerminalMetrics.panelSize(visible: small, sizePercent: 50), 600, 380)
+        expectSize(QuickTerminalMetrics.panelSize(visible: small, sizePercent: 50), 380, 285)
     }
 
     /// Why nil keeps its own path: the two regimes disagree. Where the share binds, 90% IS the default;
@@ -44,8 +44,6 @@ struct QuickTerminalMetricsTests {
         #expect(choicesMatchingTheDefault(on: large).isEmpty)
     }
 
-    /// Both axes, since the claim is that the whole size matches: on a screen where one axis is share-bound
-    /// and the other cap-bound, a percentage can reproduce the default width while missing its height.
     private func choicesMatchingTheDefault(on visible: WindowGeometry.Size) -> [Int] {
         let byDefault = QuickTerminalMetrics.panelSize(visible: visible, sizePercent: nil)
         return QuickTerminalMetrics.sizePercentChoices.filter {

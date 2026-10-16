@@ -115,12 +115,13 @@ session drag are out of scope.
   `reshowSuppression` is dropped — AppKit makes a clicked window key BEFORE delivering its button action, so
   the toolbar and Dock toggles would otherwise re-show the panel the same click dismissed. This is AppKit
   key-window behavior, so it is manually verified, not unit-tested.
-- `QuickTerminalMetrics.panelSize` owns the frame. Unset, it is 90% of the focused screen capped at
-  1100x700: the in-window overlay needed no cap because a window is already modest, and 90% of a large
+- `QuickTerminalMetrics.panelSize` owns the frame. The panel is 75% as tall as wide, the width from the screen's shorter side,
+  since a quick look wants rows and a screen-shaped panel is all columns. Unset, it is 90% capped at
+  1000 points: the in-window overlay needed no cap because a window is already modest, and 90% of a large
   display is a wall of terminal, not a quick aside. `quickTerminalSizePercent` REPLACES both terms with a
   plain share of the screen rather than raising the cap, a cap in points being what ages badly across
   displays. nil keeps its own path because no single percentage reproduces the pair: the cap binds above
-  roughly 1222x780 points and the share below it. The panel re-frames on every show, so a Settings change
+  roughly 1111 points of shorter side and the share below it. The panel re-frames on every show, so a Settings change
   lands on the next summon and needs no notification.
 - ⌘-drag moves the unzoomed panel. `QuickTerminalPanel.sendEvent` holds the ⌘-mouse-down until the pointer
   passes `dragThreshold` and forwards it with its up otherwise, since ⌘-click opens links there; it moves

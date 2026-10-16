@@ -1384,7 +1384,7 @@ hiding under covers, and cancellation rules.
 ## quick
 
 `agtermctl quick [show|hide|toggle]` — the app's one quick terminal (a single scratch terminal in a
-floating panel at 90% of the focused screen up to 1100x700 unless Settings > Interface sets a share of its
+floating 4:3 panel, at 90% of the focused screen's shorter side up to 1000 points unless Settings > Interface sets a share of its
 own, not in the tree and owned by no window; its
 shell stays alive across hides). Errors with `no open window` when none is open, and with `pick pending`
 while a picker is up. Read its visibility back from the tree's top-level `quickVisible`.

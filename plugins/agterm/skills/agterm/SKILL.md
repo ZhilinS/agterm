@@ -98,7 +98,7 @@ program, which is how to show the user an artifact you generated. The same sessi
 whole session or one pane as its placement bounds. The session keeps focus and stays typable
 under it.
 One slot, so a session shows either a HUD or a program overlay, never both. Separately, the app has one
-**quick terminal** (a scratch shell in a floating panel at 90% of the focused screen capped at 1100x700,
+**quick terminal** (a scratch shell in a floating 4:3 panel, at 90% of the focused screen's shorter side capped at 1000 points,
 or whatever share Settings sets instead; not part of the tree and not owned by a window).
 
 Inspect the live tree any time with `agtermctl tree --json` (workspaces → sessions, each with
