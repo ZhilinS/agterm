@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.36.0-fork.4 - 2026-10-16
+
+### Improved
+
+- **The quick terminal is a 4:3 panel.** It takes 90% of the focused screen's shorter side, up to 1000 points wide, instead of 90% of each side up to 1100x700, so a wide display gives it rows rather than a strip of columns. A size set in Settings ▸ Interface is now a share of the shorter side too.
+
 ## v0.36.0-fork.3 - 2026-10-15
 
 ### New
