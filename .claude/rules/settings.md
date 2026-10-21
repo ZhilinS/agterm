@@ -104,6 +104,7 @@ paths:
   status reset, auto-follow, and Reset. Key Mapping holds the keyboard layout lock, config directory,
   diagnostics, and Reload. Sharing holds the GitLab URL and project (`shareGitLabURL`, `shareGitLabProject`)
   and the token, which `PageSharing` keeps in the Keychain; all three set show the HTML strip's Share.
+  The optional `shareGitLabOAuthAppID` turns on page comments; `PageComments` owns that contract.
 - `statusReset` stores a raw `StatusReset` (`firstKey`|`enter`|`never`), nil for the default `firstKey`,
   resolved by `effectiveStatusReset` and mirrored to `GhosttyApp.statusReset`, which the surface factories'
   keystroke-clear closure reads at keystroke time. Reset to defaults clears it with the glyph settings.

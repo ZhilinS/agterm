@@ -355,6 +355,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// shareGitLabURL and shareGitLabProject say where Share publishes a page; the token is in the Keychain.
     public var shareGitLabURL: String?
     public var shareGitLabProject: String?
+    /// shareGitLabOAuthAppID is the GitLab OAuth application that turns on comments on shared pages.
+    public var shareGitLabOAuthAppID: String?
 
     public init(fontFamily: String? = nil, fontSize: Double? = nil, theme: String? = nil,
                 darkTheme: String? = nil, followSystemAppearance: Bool? = nil,
@@ -382,7 +384,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 autoHideSidebarInactiveWindows: Bool? = nil, flaggedViewLayout: String? = nil,
                 linkOpenMode: String? = nil, terminalInputSource: String? = nil,
                 htmlOverlayZoom: Double? = nil, welcomeShown: Bool? = nil,
-                shareGitLabURL: String? = nil, shareGitLabProject: String? = nil) {
+                shareGitLabURL: String? = nil, shareGitLabProject: String? = nil, shareGitLabOAuthAppID: String? = nil) {
         self.fontFamily = fontFamily
         self.fontSize = fontSize
         self.theme = theme
@@ -437,6 +439,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.welcomeShown = welcomeShown
         self.shareGitLabURL = shareGitLabURL
         self.shareGitLabProject = shareGitLabProject
+        self.shareGitLabOAuthAppID = shareGitLabOAuthAppID
     }
 
     /// The configured mode, including an object decoded from the legacy boolean schema.

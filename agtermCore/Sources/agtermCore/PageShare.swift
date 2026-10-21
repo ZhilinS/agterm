@@ -3,13 +3,15 @@ import Foundation
 import Observation
 
 /// PageShareConfig is where `session.overlay.share` publishes: a GitLab instance, a project path or id, and an
-/// access token. nil unless all three are set, which is also what shows the Share button.
+/// access token. nil unless all three are set, which is also what shows the Share button. `oauthAppID` is the
+/// optional GitLab OAuth application a published page signs its viewers in with to comment.
 public struct PageShareConfig: Equatable, Sendable {
     public let baseURL: String
     public let project: String
     public let token: String
+    public let oauthAppID: String?
 
-    public init?(gitLabURL: String?, project: String?, token: String?) {
+    public init?(gitLabURL: String?, project: String?, token: String?, oauthAppID: String? = nil) {
         guard var base = gitLabURL?.trimmedOrNil,
               let project = project?.trimmedOrNil,
               let token = token?.trimmedOrNil else { return nil }
@@ -19,6 +21,7 @@ public struct PageShareConfig: Equatable, Sendable {
         self.baseURL = base
         self.project = project
         self.token = token
+        self.oauthAppID = oauthAppID?.trimmedOrNil
     }
 }
 

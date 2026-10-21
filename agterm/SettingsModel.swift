@@ -356,6 +356,10 @@ final class SettingsModel {
         settings.shareGitLabProject = value.isEmpty ? nil : value
         try? settingsStore.save(settings)
     }
+    func setShareGitLabOAuthAppID(_ value: String) {
+        settings.shareGitLabOAuthAppID = value.isEmpty ? nil : value
+        try? settingsStore.save(settings)
+    }
     /// Persist the user-idle auto-follow timeout (nil = off) and push it into every open window's `AppStore`
     /// (a newly opened window seeds itself via `applyAutoFollow(to:)`).
     func setAutoFollowAttention(_ value: String?) {

@@ -26,7 +26,8 @@ final class PageSharing {
     /// config is nil until the URL, project and token are all set, which is what hides the Share button.
     var config: PageShareConfig? {
         let settings = settings()
-        return PageShareConfig(gitLabURL: settings.shareGitLabURL, project: settings.shareGitLabProject, token: token)
+        return PageShareConfig(gitLabURL: settings.shareGitLabURL, project: settings.shareGitLabProject, token: token,
+                               oauthAppID: settings.shareGitLabOAuthAppID)
     }
 
     func setToken(_ value: String) {

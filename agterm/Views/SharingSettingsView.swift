@@ -17,6 +17,11 @@ struct SharingSettingsView: View {
                 Text("A project access token with the Maintainer role, which reading the Pages URL needs, and the api scope. It is kept in the Keychain. A shared page lands at <pages URL>/<id>/.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                TextField("OAuth Application ID", text: oauthAppID, prompt: Text("optional"))
+                    .accessibilityIdentifier("settings-share-gitlab-oauth-app-id")
+                Text("Optional; enables comments on shared pages. The GitLab application must be non-confidential, with the api scope and the redirect URI <pages URL>/callback.html.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -29,6 +34,10 @@ struct SharingSettingsView: View {
 
     private var project: Binding<String> {
         Binding(get: { model.settings.shareGitLabProject ?? "" }, set: { model.setShareGitLabProject($0) })
+    }
+
+    private var oauthAppID: Binding<String> {
+        Binding(get: { model.settings.shareGitLabOAuthAppID ?? "" }, set: { model.setShareGitLabOAuthAppID($0) })
     }
 
     private var token: Binding<String> {
