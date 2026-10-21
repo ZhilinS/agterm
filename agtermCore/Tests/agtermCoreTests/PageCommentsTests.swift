@@ -141,6 +141,22 @@ struct PageCommentsTests {
         #expect(await gitLab.files.map { Array($0.keys) } == [["snippets/\(id)/index.html"]])
     }
 
+    @Test func aCommitRefusedOverACallbackAnotherShareJustCreatedIsRetriedWithoutIt() async throws {
+        let path = try page("<h1>hi</h1>")
+        let id = PageShares.id(forFile: path)
+        let callbackSHA = PageShares.sha256(PageComments.callback(config: config, appID: "app-1"))
+        var routes = routes(path, issues: "[]")
+        routes["GET repository/files/snippets%2Fcallback.html?ref=main"] = [(404, "{}"), (200, #"{"content_sha256":"\#(callbackSHA)"}"#)]
+        routes["POST repository/commits"] = [(400, #"{"message":"A file with this name already exists"}"#), (201, #"{"id":"c0ffee"}"#)]
+        let gitLab = CommentsGitLab(routes)
+
+        let share = await PageShares().publish(file: path, config: config, transport: gitLab)
+
+        #expect(share.state == .idle)
+        #expect(await gitLab.files.map { Set($0.keys) } == [["snippets/\(id)/index.html", "snippets/callback.html"],
+                                                            ["snippets/\(id)/index.html"]])
+    }
+
     @Test func aRefusedIssueSearchFailsTheShareWithGitLabsMessage() async throws {
         let path = try page("<h1>hi</h1>")
         var routes = routes(path, issues: "[]")

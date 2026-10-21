@@ -120,14 +120,14 @@ public final class PageShares {
             shares[id] = share
             onLink(url)
             let actions = try await uploads(path, id: id, url: url, gitLab: gitLab)
-            if actions.isEmpty {
-                share.state = .idle
-            } else {
-                let commit = try await gitLab.commit(actions, message: "Share \(URL(fileURLWithPath: path).lastPathComponent)")
+            let message = "Share \(URL(fileURLWithPath: path).lastPathComponent)"
+            if let commit = try await commit(actions, message: message, gitLab: gitLab) {
                 let finished = try await gitLab.pipeline(sha: commit).map { Self.advance(&share, $0) } ?? false
                 if !finished {
                     Task { await poll(id, commit: commit, gitLab: gitLab) }
                 }
+            } else {
+                share.state = .idle
             }
         } catch {
             share.state = .failed
@@ -150,6 +150,22 @@ public final class PageShares {
             gitLab.write(file, PageComments.page(content, config: gitLab.config, appID: appID)),
             gitLab.write(PageComments.callbackFile, PageComments.callback(config: gitLab.config, appID: appID)),
         ].compactMap { $0 }
+    }
+
+    /// commit sends `actions` and returns the commit id, nil when there is nothing to send. A refused commit that
+    /// wrote the callback page is rebuilt from its current SHA and retried once: two pages shared at the same moment
+    /// can both see it absent and both create it.
+    private func commit(_ actions: [[String: String]], message: String, gitLab: GitLab) async throws -> String? {
+        guard !actions.isEmpty else { return nil }
+        do {
+            return try await gitLab.commit(actions, message: message)
+        } catch let error as GitLabError {
+            guard let callback = actions.first(where: { $0["file_path"] == PageComments.callbackFile }),
+                  let content = callback["content"].flatMap({ Data(base64Encoded: $0) }) else { throw error }
+            let rebuilt = try await actions.filter { $0 != callback }
+                + [gitLab.write(PageComments.callbackFile, content)].compactMap { $0 }
+            return rebuilt.isEmpty ? nil : try await gitLab.commit(rebuilt, message: message)
+        }
     }
 
     private func pagesURL(_ gitLab: GitLab) async throws -> String {
