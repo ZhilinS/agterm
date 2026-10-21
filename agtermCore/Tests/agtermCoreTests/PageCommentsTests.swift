@@ -176,7 +176,9 @@ struct PageCommentsTests {
         let share = await PageShares().publish(file: path, config: config, transport: gitLab)
 
         #expect(share.state == .idle)
-        #expect(await gitLab.commits.map { $0.mapValues(\.action) } == [["snippets/callback.html": "update"]])
+        #expect(await gitLab.commits == [[
+            "snippets/callback.html": Upload(action: "update", content: text(PageComments.callback(config: config, appID: "app-1"))),
+        ]])
     }
 
     @Test func aSecondShareOfTheSameBytesSendsNoCommit() async throws {
@@ -191,7 +193,9 @@ struct PageCommentsTests {
         let gitLab = CommentsGitLab(routes)
         let shares = PageShares()
 
-        _ = await shares.publish(file: path, config: config, transport: gitLab)
+        let first = await shares.publish(file: path, config: config, transport: gitLab)
+        #expect(first.state == .idle)
+        #expect(await gitLab.commits.count == 1)
         let second = await shares.publish(file: path, config: config, transport: gitLab)
 
         #expect(second.state == .idle)
