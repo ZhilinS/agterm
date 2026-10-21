@@ -12,7 +12,7 @@ public enum PageComments {
             .map { #"<meta name="\#($0.0)" content="\#(escape($0.1))">"# }
             .joined()
         guard let text = String(data: content, encoding: .utf8),
-              let head = text.firstMatch(of: #/<head(\s[^>]*)?>/#.ignoresCase()) else {
+              let head = text.firstMatch(of: #/<head(\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/#.ignoresCase()) else {
             return Data(tags.utf8) + content
         }
         return Data((text[..<head.range.upperBound] + tags + text[head.range.upperBound...]).utf8)

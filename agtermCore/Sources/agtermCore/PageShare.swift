@@ -152,18 +152,23 @@ public final class PageShares {
         ].compactMap { $0 }
     }
 
-    /// commit sends `actions` and returns the commit id, nil when there is nothing to send. A refused commit that
-    /// wrote the callback page is rebuilt from its current SHA and retried once: two pages shared at the same moment
-    /// can both see it absent and both create it.
+    /// commit sends `actions` and returns the commit id, nil when there is nothing to send. A 400 on a commit that
+    /// created the callback page is rebuilt from its current SHA and retried once: two pages shared at the same
+    /// moment can both see it absent and both create it. Any other refusal, or a failed re-read, throws the refusal.
     private func commit(_ actions: [[String: String]], message: String, gitLab: GitLab) async throws -> String? {
         guard !actions.isEmpty else { return nil }
         do {
             return try await gitLab.commit(actions, message: message)
-        } catch let error as GitLabError {
-            guard let callback = actions.first(where: { $0["file_path"] == PageComments.callbackFile }),
-                  let content = callback["content"].flatMap({ Data(base64Encoded: $0) }) else { throw error }
-            let rebuilt = try await actions.filter { $0 != callback }
-                + [gitLab.write(PageComments.callbackFile, content)].compactMap { $0 }
+        } catch let refusal as GitLabError where refusal.status == 400 {
+            guard let callback = actions.first(where: { $0["file_path"] == PageComments.callbackFile && $0["action"] == "create" }),
+                  let content = callback["content"].flatMap({ Data(base64Encoded: $0) }) else { throw refusal }
+            let rewrite: [String: String]?
+            do {
+                rewrite = try await gitLab.write(PageComments.callbackFile, content)
+            } catch {
+                throw refusal
+            }
+            let rebuilt = actions.filter { $0 != callback } + [rewrite].compactMap { $0 }
             return rebuilt.isEmpty ? nil : try await gitLab.commit(rebuilt, message: message)
         }
     }

@@ -2,13 +2,18 @@ import Foundation
 import Testing
 @testable import agtermCore
 
+private struct Upload: Equatable, Sendable {
+    let action: String
+    let content: String
+}
+
 /// CommentsGitLab answers `METHOD path` from a queue and records every request, each issue it was asked to create, and
-/// each commit as its file paths mapped to decoded contents.
+/// each commit as its file paths mapped to their action and decoded content.
 private actor CommentsGitLab: GitLabTransport {
     private var routes: [String: [(Int, String)]]
     private(set) var keys: [String] = []
     private(set) var issuePosts: [[String: String]] = []
-    private(set) var files: [[String: String]] = []
+    private(set) var commits: [[String: Upload]] = []
 
     init(_ routes: [String: [(Int, String)]]) {
         self.routes = routes
@@ -23,8 +28,9 @@ private actor CommentsGitLab: GitLabTransport {
             issuePosts.append(body)
         }
         if key == "POST repository/commits", let actions = body?["actions"] as? [[String: String]] {
-            files.append(Dictionary(uniqueKeysWithValues: actions.map {
-                ($0["file_path"] ?? "", String(decoding: Data(base64Encoded: $0["content"] ?? "") ?? Data(), as: UTF8.self))
+            commits.append(Dictionary(uniqueKeysWithValues: actions.map {
+                ($0["file_path"] ?? "", Upload(action: $0["action"] ?? "",
+                                               content: String(decoding: Data(base64Encoded: $0["content"] ?? "") ?? Data(), as: UTF8.self)))
             }))
         }
         guard let queue = routes[key], let answer = queue.first else { return (Data(#"{"message":"404 Not Found"}"#.utf8), 404) }
@@ -74,6 +80,8 @@ struct PageCommentsTests {
             == "<html><HEAD lang=\"ru\">\(metas)<title>t</title></head>")
         #expect(text(PageComments.page(Data("<header>x</header><head>".utf8), config: config, appID: "app-1"))
             == "<header>x</header><head>\(metas)")
+        #expect(text(PageComments.page(Data(#"<head data-note="a>b" lang='c>d'><title>t</title>"#.utf8), config: config, appID: "app-1"))
+            == #"<head data-note="a>b" lang='c>d'>"# + metas + "<title>t</title>")
     }
 
     @Test func aPageWithoutAHeadGetsTheMetaTagsFirst() {
@@ -108,10 +116,10 @@ struct PageCommentsTests {
         let issue = try #require(await gitLab.issuePosts.first)
         #expect(issue["title"] == "Комментарии · \(id) · Plan")
         #expect(issue["description"] == "https://snippets.pages.example.com/\(id)/")
-        let files = await gitLab.files
-        #expect(files.count == 1)
-        #expect(files.first?["snippets/\(id)/index.html"] == "<head>\(metas)<title>Plan</title></head>")
-        #expect(files.first?["snippets/callback.html"] == text(PageComments.callback(config: config, appID: "app-1")))
+        #expect(await gitLab.commits == [[
+            "snippets/\(id)/index.html": Upload(action: "create", content: "<head>\(metas)<title>Plan</title></head>"),
+            "snippets/callback.html": Upload(action: "create", content: text(PageComments.callback(config: config, appID: "app-1"))),
+        ]])
     }
 
     @Test func unchangedBytesStillEnsureTheIssueButCommitNothing() async throws {
@@ -138,7 +146,7 @@ struct PageCommentsTests {
         _ = await PageShares().publish(file: path, config: config, transport: gitLab)
 
         #expect(await !gitLab.keys.contains("POST issues"))
-        #expect(await gitLab.files.map { Array($0.keys) } == [["snippets/\(id)/index.html"]])
+        #expect(await gitLab.commits.map { $0.mapValues(\.action) } == [["snippets/\(id)/index.html": "create"]])
     }
 
     @Test func aCommitRefusedOverACallbackAnotherShareJustCreatedIsRetriedWithoutIt() async throws {
@@ -153,8 +161,81 @@ struct PageCommentsTests {
         let share = await PageShares().publish(file: path, config: config, transport: gitLab)
 
         #expect(share.state == .idle)
-        #expect(await gitLab.files.map { Set($0.keys) } == [["snippets/\(id)/index.html", "snippets/callback.html"],
-                                                            ["snippets/\(id)/index.html"]])
+        #expect(await gitLab.commits.map { $0.mapValues(\.action) } == [
+            ["snippets/\(id)/index.html": "create", "snippets/callback.html": "create"],
+            ["snippets/\(id)/index.html": "create"],
+        ])
+    }
+
+    @Test func aCallbackWithOtherBytesIsUpdatedAloneWhenThePageIsUnchanged() async throws {
+        let path = try page("<h1>hi</h1>")
+        let pageSHA = PageShares.sha256(PageComments.page(Data("<h1>hi</h1>".utf8), config: config, appID: "app-1"))
+        let gitLab = CommentsGitLab(routes(path, issues: "[]", page: (200, #"{"content_sha256":"\#(pageSHA)"}"#),
+                                           callback: (200, #"{"content_sha256":"0000"}"#)))
+
+        let share = await PageShares().publish(file: path, config: config, transport: gitLab)
+
+        #expect(share.state == .idle)
+        #expect(await gitLab.commits.map { $0.mapValues(\.action) } == [["snippets/callback.html": "update"]])
+    }
+
+    @Test func aSecondShareOfTheSameBytesSendsNoCommit() async throws {
+        let path = try page("<h1>hi</h1>")
+        let id = PageShares.id(forFile: path)
+        let pageSHA = PageShares.sha256(PageComments.page(Data("<h1>hi</h1>".utf8), config: config, appID: "app-1"))
+        let callbackSHA = PageShares.sha256(PageComments.callback(config: config, appID: "app-1"))
+        var routes = routes(path, issues: "[]")
+        routes[issues(id)] = [(200, "[]"), (200, #"[{"iid":7,"title":"Комментарии · \#(id) · hi"}]"#)]
+        routes["GET repository/files/snippets%2F\(id)%2Findex.html?ref=main"] = [(404, "{}"), (200, #"{"content_sha256":"\#(pageSHA)"}"#)]
+        routes["GET repository/files/snippets%2Fcallback.html?ref=main"] = [(404, "{}"), (200, #"{"content_sha256":"\#(callbackSHA)"}"#)]
+        let gitLab = CommentsGitLab(routes)
+        let shares = PageShares()
+
+        _ = await shares.publish(file: path, config: config, transport: gitLab)
+        let second = await shares.publish(file: path, config: config, transport: gitLab)
+
+        #expect(second.state == .idle)
+        #expect(await gitLab.commits.count == 1)
+        #expect(await gitLab.issuePosts.count == 1)
+    }
+
+    @Test func aFailedCallbackReReadSurfacesTheCommitsRefusal() async throws {
+        let path = try page("<h1>hi</h1>")
+        var routes = routes(path, issues: "[]")
+        routes["GET repository/files/snippets%2Fcallback.html?ref=main"] = [(404, "{}"), (500, #"{"message":"500 Internal Server Error"}"#)]
+        routes["POST repository/commits"] = [(400, #"{"message":"A file with this name already exists"}"#)]
+        let gitLab = CommentsGitLab(routes)
+
+        let share = await PageShares().publish(file: path, config: config, transport: gitLab)
+
+        #expect(share.error == "GitLab 400: A file with this name already exists")
+        #expect(await gitLab.commits.count == 1)
+    }
+
+    @Test func aCommitRefusedForAnotherReasonIsNotRetried() async throws {
+        let path = try page("<h1>hi</h1>")
+        var routes = routes(path, issues: "[]")
+        routes["POST repository/commits"] = [(403, #"{"message":"403 Forbidden"}"#), (201, #"{"id":"c0ffee"}"#)]
+        let gitLab = CommentsGitLab(routes)
+
+        let share = await PageShares().publish(file: path, config: config, transport: gitLab)
+
+        #expect(share.state == .failed)
+        #expect(share.error == "GitLab 403: 403 Forbidden")
+        #expect(await gitLab.commits.count == 1)
+    }
+
+    @Test func aRefusedIssueCreationFailsTheShareWithGitLabsMessage() async throws {
+        let path = try page("<h1>hi</h1>")
+        var routes = routes(path, issues: "[]")
+        routes["POST issues"] = [(422, #"{"message":"title is too long"}"#)]
+        let gitLab = CommentsGitLab(routes)
+
+        let share = await PageShares().publish(file: path, config: config, transport: gitLab)
+
+        #expect(share.state == .failed)
+        #expect(share.error == "GitLab 422: title is too long")
+        #expect(await gitLab.commits.isEmpty)
     }
 
     @Test func aRefusedIssueSearchFailsTheShareWithGitLabsMessage() async throws {
@@ -178,7 +259,7 @@ struct PageCommentsTests {
         _ = await PageShares().publish(file: path, config: plain, transport: gitLab)
 
         #expect(await !gitLab.keys.contains { $0.contains("issues") })
-        #expect(await gitLab.files == [["snippets/\(PageShares.id(forFile: path))/index.html": "<head></head>"]])
+        #expect(await gitLab.commits == [["snippets/\(PageShares.id(forFile: path))/index.html": Upload(action: "create", content: "<head></head>")]])
     }
 
     @Test func commentsReadEveryPageOfTheIssuesDiscussions() async throws {
