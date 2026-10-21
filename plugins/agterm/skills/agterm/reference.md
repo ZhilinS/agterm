@@ -938,6 +938,12 @@ error keeps those names for compatibility.
   `state` `publishing` until the pipeline succeeds (`idle`) or fails or runs past five minutes (`failed`).
   Errors `sharing is not configured: …`, `only a file page can be shared`, GitLab's message for a refused
   call, and the two `reload` errors.
+- `session overlay comments [--pane left|right] [--target] [--window W]` — print a shared FILE page's
+  comments as JSON. Needs the OAuth Application ID in Settings > Sharing, which makes each share add
+  `gl-url`/`gl-project`/`gl-app-id` meta tags to the published copy, write `callback.html` at the site root,
+  and make sure the page's GitLab issue exists. `result.discussions`:
+  `[{id, notes: [{id, author, body, createdAt, system}]}]`, bodies raw, empty before the first comment.
+  Errors `comments are not configured: …`, the `share` errors, and GitLab's message.
 - `session overlay close [--pane left|right] [--target] [--window W]` — close (destroy) the overlay.
   `--pane` closes that split pane's overlay; omit it for the session-wide one. It also takes a HUD down,
   as a courtesy — the slot is the same one. For an overlay shown on another Mac (see Remote sessions) the

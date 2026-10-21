@@ -1895,6 +1895,16 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
+                agtermctl session overlay comments [--pane left|right] [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.comments</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Print a shared file page's comments as JSON, addressed like <span style="font-family: &quot;JetBrains Mono&quot;, monospace">share</span>. With an OAuth Application ID in Settings ▸ Sharing, a share adds <span style="font-family: &quot;JetBrains Mono&quot;, monospace">gl-url</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">gl-project</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">gl-app-id</span> meta tags to the published copy, writes <span style="font-family: &quot;JetBrains Mono&quot;, monospace">callback.html</span> at the site root, and makes sure the page has its GitLab issue; this command reads that issue's discussions as <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.discussions</span> <span style="font-family: &quot;JetBrains Mono&quot;, monospace">[{id, notes: [{id, author, body, createdAt, system}]}]</span>, bodies raw, empty before the first comment. A page opened with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--js</span> can poll it for itself through <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agterm.request</span>. Errors <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">comments are not configured: …</span>, the <span style="font-family: &quot;JetBrains Mono&quot;, monospace">share</span> errors, and GitLab's own message.
+              </p>
+            </div>
+
+            <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
                 agtermctl session overlay submit --value TEXT [--pane left|right] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.submit</div>

@@ -774,7 +774,8 @@ agtermctl session overlay reload --target "$AGTERM_SESSION_ID"   # after rewriti
   for a URL; use it when the page links to other pages.
   `session overlay navigate finder` reveals the current file; scripts read a URL from `tree`'s `htmlOverlays[].page`.
 - `session overlay share` publishes a file page to GitLab Pages, when Settings > Sharing names a project,
-  and prints the link to give teammates; see `reference.md`.
+  and prints the link to give teammates; with an OAuth Application ID set, viewers comment through GitLab
+  and `session overlay comments` reads those comments back; see `reference.md`.
 - `--chromeless` (file pages only, not with `--navigation`) drops the strip, for a dashboard or monitor
   meant to look native. The user then closes it with ⌘W, so give such a page its own
   `data-agterm="session.overlay.close"` button when it is not self-evident.
