@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.36.0-fork.5 - 2026-10-21
+
+### New
+
+- **Colleagues can comment a shared page.** Set an OAuth Application ID in Settings ▸ Sharing (a non-confidential GitLab app, `api` scope, redirect `<pages URL>/callback.html`) and Share also publishes the sign-in page and gives the page its own GitLab issue. On GitLab Pages anyone with access to the project signs in and comments the page's blocks; the threads live in that issue. `session.overlay.comments` (and `agtermctl session overlay comments`) reads them back, which is how a page inside agterm shows them.
+
 ## v0.36.0-fork.4 - 2026-10-16
 
 ### Improved
