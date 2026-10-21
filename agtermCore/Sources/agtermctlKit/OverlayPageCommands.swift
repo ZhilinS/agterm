@@ -84,6 +84,23 @@ extension Session.Overlay {
                            args: options.withWindow(pane.map { ControlArgs(pane: $0) }))
         }
     }
+
+    struct Comments: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Print a shared file overlay's GitLab comments as JSON.",
+            discussion: "Needs the OAuth Application ID in Settings > Sharing. Note bodies are raw; empty before the first comment.")
+        @Option(name: .long, help: "Read that split pane's page (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
+        var pane: String?
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func validate() throws { try Session.Overlay.validatePane(pane) }
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sessionOverlayComments, target: target.target,
+                           args: options.withWindow(pane.map { ControlArgs(pane: $0) }))
+        }
+    }
 }
 
 extension Session.Overlay.Open {

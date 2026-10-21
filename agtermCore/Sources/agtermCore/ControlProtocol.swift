@@ -50,6 +50,7 @@ public enum Command: String, Codable, Sendable {
     case sessionOverlayReload = "session.overlay.reload"
     case sessionOverlayNavigate = "session.overlay.navigate"
     case sessionOverlayShare = "session.overlay.share"
+    case sessionOverlayComments = "session.overlay.comments"
     case sessionOverlayResult = "session.overlay.result"
     case sessionOverlaySubmit = "session.overlay.submit"
     case sessionOverlayCopy = "session.overlay.copy"

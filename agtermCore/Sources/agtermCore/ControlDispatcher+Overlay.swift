@@ -122,6 +122,8 @@ extension ControlDispatcher {
     func dispatchSessionOverlayShare(_ request: ControlRequest) async -> ControlResponse {
         switch parseOverlayPane(request.args?.pane) {
         case .rejected(let response): return response
+        case .pane(let pane) where request.cmd == .sessionOverlayComments:
+            return await actions.sessionOverlayComments(request.target, window: request.args?.window, pane: pane)
         case .pane(let pane):
             return await actions.shareSessionOverlay(request.target, window: request.args?.window, pane: pane)
         }

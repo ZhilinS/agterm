@@ -14,6 +14,9 @@ private actor CannedGitLab: GitLabTransport {
         if url.hasSuffix("/repository/commits") {
             return (Data(#"{"id":"c0ffee"}"#.utf8), 201)
         }
+        if url.contains("/issues?") {
+            return (Data("[]".utf8), 200)
+        }
         return (Data(#"[{"status":"success","web_url":"https://gitlab.example.com/p/1"}]"#.utf8), 200)
     }
 }
@@ -104,5 +107,22 @@ final class ControlServerShareTests: XCTestCase {
 
         XCTAssertEqual(web.error, PageShareError.notFile)
         XCTAssertEqual(none.error, OverlayHtmlError.noOverlay)
+    }
+
+    func testCommentsReadTheFilePagesIssueAndNeedTheOAuthApp() async throws {
+        let session = try open(.file(path: "/tmp/a/page.html", grantRoot: nil))
+        let web = try open(.url(try XCTUnwrap(URL(string: "http://localhost:5173/"))))
+
+        let off = await server.sessionOverlayComments(session.id.uuidString, window: nil, pane: nil)
+        PageSharing.shared.settings = {
+            AppSettings(shareGitLabURL: "https://gitlab.example.com", shareGitLabProject: "team/snippets",
+                        shareGitLabOAuthAppID: "app-1")
+        }
+        let on = await server.sessionOverlayComments(session.id.uuidString, window: nil, pane: nil)
+        let url = await server.sessionOverlayComments(web.id.uuidString, window: nil, pane: nil)
+
+        XCTAssertEqual(off.error, PageShareError.noComments)
+        XCTAssertEqual(on, ControlResponse(ok: true, result: ControlResult(discussions: [])))
+        XCTAssertEqual(url.error, PageShareError.notFile)
     }
 }

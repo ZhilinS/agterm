@@ -165,7 +165,7 @@ renumbering. Do not reintroduce a count anywhere.
   `.split.close`, `.swap`, `.lead`,
   `.scratch`, `.focus`, `.resize`, `.go`, `.copy`, `.paste`, `.selectall`, `.text`, `.search`, `.status`,
   `.flag`, `.seen`, `.restore`, `.restart`, `.background`, `.overlay.open`, `.overlay.close`, `.overlay.resize`,
-  `.overlay.reload`, `.overlay.navigate`, `.overlay.share`,
+  `.overlay.reload`, `.overlay.navigate`, `.overlay.share`, `.overlay.comments`,
   `.overlay.result`, `.overlay.submit`, `.overlay.copy`, `.overlay.text`, `.overlay.job.run`, `.hud.open`, `.hud.update`,
   `.hud.close`
 - `surface.zoom`, `surface.cursor`, `dashboard`, `pick.open`, `pick.result`, `pick.cancel`,
@@ -637,6 +637,11 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   The poll gives up after five minutes, so a pipeline that never runs cannot leave the spinner up.
   No `tree.changed`: a share is not a slot change.
   The token is a Keychain generic password per bundle id, never in settings.
+- With `shareGitLabOAuthAppID` set, `PageComments` turns a share into a commented page: gl-* meta tags in the
+  published bytes only, `snippets/callback.html` in the same commit, and the page's issue made sure of on every
+  share. `overlay.comments` reads that issue's discussions with raw bodies, addressed and waiting like
+  `overlay.share`; the page script parses its own anchor markers. Its human output is the discussions JSON,
+  another nested-object exception to the `--json` rule.
 - A FILE page drives the control API from its own content; `site/docs.html#page-bridge` owns the user
   contract. Pages are self-authored and trusted like a program overlay, which already inherits
   `AGTERM_SOCKET`, so there are no permission tiers; a URL page gets none of it. Two surfaces, one path:

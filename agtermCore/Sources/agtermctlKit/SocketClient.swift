@@ -279,6 +279,9 @@ struct SocketClient {
         if let restore = response.result?.restore {
             return formatRestoreStatus(restore)
         }
+        if let discussions = response.result?.discussions {
+            return formatDiscussions(discussions)
+        }
         if let app = response.result?.app {
             guard let installed = response.result?.installed, installed != app else { return formatIdentity(app) }
             return "\(formatIdentity(app))\ninstalled: \(formatIdentity(installed))"
@@ -320,6 +323,13 @@ struct SocketClient {
             return id
         }
         return "ok"
+    }
+
+    /// The page script's own feed, so it stays JSON even without `--json`.
+    static func formatDiscussions(_ discussions: [ControlPageDiscussion]) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return String(decoding: (try? encoder.encode(discussions)) ?? Data("[]".utf8), as: UTF8.self)
     }
 
     static func formatIdentity(_ identity: AppIdentity) -> String {

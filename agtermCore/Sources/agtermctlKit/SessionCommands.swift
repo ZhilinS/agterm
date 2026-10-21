@@ -532,7 +532,7 @@ struct Session: ParsableCommand {
     struct Overlay: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Open, read, resize, or close an ephemeral overlay terminal on a session.",
-            subcommands: [Open.self, Close.self, Resize.self, Reload.self, Navigate.self, Share.self, Result.self, Submit.self,
+            subcommands: [Open.self, Close.self, Resize.self, Reload.self, Navigate.self, Share.self, Comments.self, Result.self, Submit.self,
                           Copy.self, Text.self, RunJob.self]
         )
 

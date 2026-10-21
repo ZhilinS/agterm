@@ -231,6 +231,15 @@ struct OverlayCommandsTests {
         #expect(rejects(["session", "overlay", "share", "--pane", "middle"]))
     }
 
+    @Test func commentsSendThePane() throws {
+        let req = try request(["session", "overlay", "comments", "--pane", "left", "--target", "s"])
+        #expect(req.cmd == .sessionOverlayComments)
+        #expect(req.target == "s")
+        #expect(req.args?.pane == "left")
+        #expect(try request(["session", "overlay", "comments"]).args == nil)
+        #expect(rejects(["session", "overlay", "comments", "--pane", "middle"]))
+    }
+
     @Test func navigateRejectsAnUnknownStep() {
         #expect(rejects(["session", "overlay", "navigate", "up"]))
         #expect(rejects(["session", "overlay", "navigate", "copy"]))

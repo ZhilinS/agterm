@@ -89,6 +89,7 @@ final class MockControlActions: ControlActions {
         case overlayReload(target: String?, window: String?, pane: OverlayPane?, current: Bool)
         case overlayNavigate(target: String?, window: String?, pane: OverlayPane?, HtmlNavigation)
         case overlayShare(target: String?, window: String?, pane: OverlayPane?)
+        case overlayComments(target: String?, window: String?, pane: OverlayPane?)
         case overlayResize(target: String?, window: String?, sizePercent: Int?)
         case overlayResult(target: String?, window: String?, pane: OverlayPane?)
         case overlaySubmit(target: String?, window: String?, pane: OverlayPane?, value: String)
@@ -633,6 +634,11 @@ final class MockControlActions: ControlActions {
 
     func shareSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) async -> ControlResponse {
         calls.append(.overlayShare(target: target, window: window, pane: pane))
+        return ControlResponse(ok: true)
+    }
+
+    func sessionOverlayComments(_ target: String?, window: String?, pane: OverlayPane?) async -> ControlResponse {
+        calls.append(.overlayComments(target: target, window: window, pane: pane))
         return ControlResponse(ok: true)
     }
 

@@ -349,6 +349,16 @@ struct SocketClientTests {
         #expect(out.contains("close_session"))
     }
 
+    @Test func formatResponsePrintsDiscussionsAsJSON() throws {
+        let discussion = ControlPageDiscussion(id: "d1", notes: [
+            ControlPageNote(id: 1, author: "Ann", body: "a/b", createdAt: "2026-10-21T10:00:00Z", system: false),
+        ])
+        let out = SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(discussions: [discussion])))
+
+        #expect(out == #"[{"id":"d1","notes":[{"author":"Ann","body":"a/b","createdAt":"2026-10-21T10:00:00Z","id":1,"system":false}]}]"#)
+        #expect(SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(discussions: []))) == "[]")
+    }
+
     @Test func formatResponsePicksTheKeymapRenderer() {
         let payload = ControlKeymap.project(keymap: Keymap(builtinOverrides: [:], commands: []),
                                             diagnostics: [], path: "/tmp/keymap.conf")
