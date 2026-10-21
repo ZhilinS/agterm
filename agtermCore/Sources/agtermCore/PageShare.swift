@@ -74,6 +74,7 @@ public struct ControlPageShareNode: Codable, Sendable, Equatable {
 public enum PageShareError {
     public static let notConfigured = "sharing is not configured: set the GitLab URL, project and token in Settings > Sharing"
     public static let notFile = "only a file page can be shared"
+    public static let noComments = "comments are not configured: set the OAuth Application ID in Settings > Sharing"
     static let timedOut = "the pipeline did not finish in 5 minutes"
 }
 
@@ -92,7 +93,7 @@ public final class PageShares {
     init() {}
 
     /// id is the first 12 hex digits of the SHA-256 of the standardized path: the page's folder on GitLab Pages.
-    public static func id(forFile path: String) -> String {
+    public nonisolated static func id(forFile path: String) -> String {
         String(sha256(Data(URL(fileURLWithPath: path).standardizedFileURL.path.utf8)).prefix(12))
     }
 
@@ -118,14 +119,11 @@ public final class PageShares {
             share.url = url
             shares[id] = share
             onLink(url)
-            let content = try Data(contentsOf: URL(fileURLWithPath: path))
-            let file = "snippets/\(id)/index.html"
-            let published = try await gitLab.fileSHA(file)
-            if published == Self.sha256(content) {
+            let actions = try await uploads(path, id: id, url: url, gitLab: gitLab)
+            if actions.isEmpty {
                 share.state = .idle
             } else {
-                let commit = try await gitLab.commit(file: file, content: content, create: published == nil,
-                                                     message: "Share \(URL(fileURLWithPath: path).lastPathComponent)")
+                let commit = try await gitLab.commit(actions, message: "Share \(URL(fileURLWithPath: path).lastPathComponent)")
                 let finished = try await gitLab.pipeline(sha: commit).map { Self.advance(&share, $0) } ?? false
                 if !finished {
                     Task { await poll(id, commit: commit, gitLab: gitLab) }
@@ -137,6 +135,21 @@ public final class PageShares {
         }
         shares[id] = share
         return share
+    }
+
+    /// uploads are the commit actions a share needs, none when GitLab already holds every byte. With comments on
+    /// they add the site's callback page, and the page's issue is made sure of first.
+    private func uploads(_ path: String, id: String, url: String, gitLab: GitLab) async throws -> [[String: String]] {
+        let content = try Data(contentsOf: URL(fileURLWithPath: path))
+        let file = "snippets/\(id)/index.html"
+        guard let appID = gitLab.config.oauthAppID else {
+            return try await [gitLab.write(file, content)].compactMap { $0 }
+        }
+        try await gitLab.ensureIssue(page: id, title: PageComments.title(content, file: path), url: url)
+        return try await [
+            gitLab.write(file, PageComments.page(content, config: gitLab.config, appID: appID)),
+            gitLab.write(PageComments.callbackFile, PageComments.callback(config: gitLab.config, appID: appID)),
+        ].compactMap { $0 }
     }
 
     private func pagesURL(_ gitLab: GitLab) async throws -> String {
@@ -188,7 +201,7 @@ public final class PageShares {
         }
     }
 
-    static func sha256(_ data: Data) -> String {
+    nonisolated static func sha256(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }
@@ -220,16 +233,22 @@ struct GitLab: Sendable {
         }
     }
 
-    /// commit writes `content` to `file` in one commit and returns the commit id.
-    func commit(file: String, content: Data, create: Bool, message: String) async throws -> String {
-        struct Commit: Decodable { let id: String }
-        let action: [String: String] = [
-            "action": create ? "create" : "update",
+    /// write is the commit action putting `content` at `file`, nil when GitLab already holds these bytes.
+    func write(_ file: String, _ content: Data) async throws -> [String: String]? {
+        let published = try await fileSHA(file)
+        guard published != PageShares.sha256(content) else { return nil }
+        return [
+            "action": published == nil ? "create" : "update",
             "file_path": file,
             "content": content.base64EncodedString(),
             "encoding": "base64",
         ]
-        let body: [String: Any] = ["branch": Self.branch, "commit_message": message, "actions": [action]]
+    }
+
+    /// commit applies `actions` in one commit and returns the commit id.
+    func commit(_ actions: [[String: String]], message: String) async throws -> String {
+        struct Commit: Decodable { let id: String }
+        let body: [String: Any] = ["branch": Self.branch, "commit_message": message, "actions": actions]
         let data = try await call("POST", "repository/commits", body: try JSONSerialization.data(withJSONObject: body))
         return try decode(Commit.self, data).id
     }
@@ -239,7 +258,7 @@ struct GitLab: Sendable {
         try decode([Pipeline].self, try await call("GET", "pipelines?sha=\(sha)")).first
     }
 
-    private func call(_ method: String, _ path: String, body: Data? = nil) async throws -> Data {
+    func call(_ method: String, _ path: String, body: Data? = nil) async throws -> Data {
         let address = "\(config.baseURL)/api/v4/projects/\(Self.encode(config.project))/\(path)"
         guard let url = URL(string: address) else { throw GitLabError(message: "invalid GitLab URL: \(config.baseURL)") }
         var request = URLRequest(url: url)
@@ -254,7 +273,7 @@ struct GitLab: Sendable {
         return data
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
+    func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try decoder.decode(type, from: data)

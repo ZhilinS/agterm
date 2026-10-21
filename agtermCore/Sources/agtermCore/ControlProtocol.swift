@@ -610,6 +610,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var restart: ControlRestartReceipt?
     /// share is where `session.overlay.share` left the page.
     public var share: ControlPageShareNode?
+    /// discussions are a shared page's comments for `session.overlay.comments`, empty before the first one.
+    public var discussions: [ControlPageDiscussion]?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
@@ -625,9 +627,10 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 width: Int? = nil, height: Int? = nil,
                 pageID: String? = nil, pageOutcome: ControlHtmlPageOutcome? = nil,
                 restart: ControlRestartReceipt? = nil, installed: AppIdentity? = nil,
-                share: ControlPageShareNode? = nil) {
+                share: ControlPageShareNode? = nil, discussions: [ControlPageDiscussion]? = nil) {
         self.restart = restart
         self.share = share
+        self.discussions = discussions
         self.installed = installed
         self.width = width
         self.height = height
