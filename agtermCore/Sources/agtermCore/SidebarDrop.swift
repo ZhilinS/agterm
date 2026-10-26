@@ -87,25 +87,6 @@ public enum SidebarDrop {
                                  destination: destination)
     }
 
-    private struct Container {
-        let workspace: UUID
-        let folder: UUID?
-        let count: Int
-        let dropChildIndex: Int
-    }
-
-    private static func container(of target: SessionDropTarget, childIndex: Int) -> Container {
-        switch target {
-        case let .workspaceRow(id, sessionCount):
-            Container(workspace: id, folder: nil, count: sessionCount, dropChildIndex: childIndex)
-        case let .sessionRow(owner, folder, sessionIndex, sessionCount):
-            Container(workspace: owner, folder: folder, count: sessionCount,
-                      dropChildIndex: childIndex == onItemIndex ? sessionIndex + 1 : childIndex)
-        case let .folderRow(owner, folder, sessionCount):
-            Container(workspace: owner, folder: folder, count: sessionCount, dropChildIndex: childIndex)
-        }
-    }
-
     /// Resolves a batch session drop into one remove-all/insert-block move. `sources` must be in the
     /// dragged block's intended order. The returned destination is the target index AFTER all dragged
     /// sessions have been removed from their original workspaces.

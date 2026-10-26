@@ -173,4 +173,45 @@ extension AppStore {
         if moving.before != workspaces.map(\.itemShape) { scheduleTreeChanged() }
         save()
     }
+
+    /// The folder-aware form of `newSessionInsertionIndex`: a sibling right after the selection, or at the end
+    /// of the selection's folder for `end`. Nil appends to the workspace.
+    public func newSessionAnchor(inWorkspace workspaceID: UUID, placement: AppSettings.NewSessionPlacement) -> SessionAnchor? {
+        guard let selectedSessionID, let workspace = workspace(forSession: selectedSessionID),
+              workspace.id == workspaceID else { return nil }
+        switch placement {
+        case .afterCurrent:
+            return .after(selectedSessionID)
+        case .end:
+            guard let folderID = workspace.container(ofSession: selectedSessionID),
+                  let last = workspace.folder(withID: folderID)?.sessions.last else { return nil }
+            return .after(last.id)
+        }
+    }
+
+    /// Whether any pending close would put folder `id` back: a member other than `sessionID` recorded in it,
+    /// or a closed workspace still holding it.
+    func pendingHoldsFolder(_ id: UUID, besides sessionID: UUID) -> Bool {
+        pendingCloseRecords.values.contains { record in
+            switch record {
+            case .sessions(let close): return close.sessions.contains { $0.session.id != sessionID && $0.folder?.id == id }
+            case .workspace(let close): return close.workspace.folder(withID: id) != nil
+            }
+        }
+    }
+
+    /// Rebuilds items, dropping sessions `keep` rejects; a folder stays even when it ends up empty.
+    func workspaceItems(from items: [WorkspaceItemSnapshot], launchRestore: Bool = false,
+                        keep: (UUID) -> Bool = { _ in true }) -> [WorkspaceItem] {
+        items.compactMap { item in
+            switch item {
+            case .session(let snapshot):
+                keep(snapshot.id) ? .session(session(from: snapshot, launchRestore: launchRestore)) : nil
+            case .folder(let folder):
+                .folder(SessionFolder(id: folder.id, name: folder.name, isExpanded: !(folder.collapsed ?? false),
+                                      sessions: folder.sessions.filter { keep($0.id) }
+                                          .map { session(from: $0, launchRestore: launchRestore) }))
+            }
+        }
+    }
 }

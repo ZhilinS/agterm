@@ -425,17 +425,6 @@ extension AppStore {
         return (folded, focusMember)
     }
 
-    /// Whether any pending close would put folder `id` back: a member other than `sessionID` recorded in it,
-    /// or a closed workspace still holding it.
-    func pendingHoldsFolder(_ id: UUID, besides sessionID: UUID) -> Bool {
-        pendingCloseRecords.values.contains { record in
-            switch record {
-            case .sessions(let close): return close.sessions.contains { $0.session.id != sessionID && $0.folder?.id == id }
-            case .workspace(let close): return close.workspace.folder(withID: id) != nil
-            }
-        }
-    }
-
     /// Whether a pending close is holding workspace `id`: the workspace itself, or a session recorded as
     /// having lived in it, whose undo would put that workspace back.
     func pendingHoldsWorkspace(_ id: UUID) -> Bool {

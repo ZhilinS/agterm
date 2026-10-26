@@ -134,12 +134,6 @@ final class AppActions {
         return settingsModel?.settings.resolveNewSessionCwd(currentSessionCwd: current, home: home) ?? home
     }
 
-    /// resolvedNewSessionAnchor applies the placement setting to the supplied store's tree; nil appends.
-    func resolvedNewSessionAnchor(in workspaceID: UUID, store: AppStore) -> SessionAnchor? {
-        store.newSessionAnchor(inWorkspace: workspaceID,
-                               placement: settingsModel?.settings.effectiveNewSessionPlacement ?? .end)
-    }
-
     func openDirectory() {
         guard uiActionsEnabled else { return }
         guard let store, let workspaceID = store.currentWorkspaceID else { return }

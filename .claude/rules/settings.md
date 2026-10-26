@@ -24,9 +24,8 @@ paths:
   would sit on the window's top edge separating nothing and read as a rendering artifact.
   `effectiveToolbarMode` falls back through legacy `compactToolbar` (`false` = normal, nil/true = compact);
   writing a mode clears the legacy field.
-- Default-on nil fields are `notificationsEnabled`, `notificationBadgeEnabled`, `rightClickPaste`,
-  `workspaceRowClickExpands`, whose mirror gates the sidebar row-click toggle only, and
-  `renameOnDoubleClick`, whose mirror decides whether that toggle waits for a rename double-click ([[sidebar]]).
+- Default-on nil fields are `notificationsEnabled`, `notificationBadgeEnabled`, `rightClickPaste`, and
+  `workspaceRowClickExpands`, whose mirror gates the sidebar row-click toggle only ([[sidebar]]).
   Default-off nil fields include attention button, Dock bounce, global config inheritance, close
   confirmation, auto-follow, hidden inactive sidebars, and interface hiding. `restoreMode` defaults to
   `none`; the legacy `restoreRunningCommand` boolean migrates to `rerun` or `none`.
@@ -94,7 +93,7 @@ paths:
   contract, so freeing it risks a crash and the rare leak is accepted.
 - `.agtermAppearanceChanged` is required because terminal color is not observable; it updates
   `terminalColor`, quick-terminal backing, title/window appearance, and non-observable chrome mirrors.
-- Settings is a 540x680 seven-tab SwiftUI scene with explicit selection defaulting General, preventing
+- Settings is a 540x680 six-tab SwiftUI scene with explicit selection defaulting General, preventing
   `com_apple_SwiftUI_Settings_selectedTabIndex` persistence. General holds Mouse and Sessions; the
   global-Ghostty-config toggle and its hint close Sessions, since a third section made the tab scroll.
   Appearance holds Terminal and Window. Interface groups `InterfaceElement`s two per row, with the
@@ -102,9 +101,7 @@ paths:
   which sits there rather than under Appearance's Window because the panel belongs to no window.
   Notifications holds banner/badge/attention/bounce/sound. Agent Status holds colors/shapes, sound,
   status reset, auto-follow, and Reset. Key Mapping holds the keyboard layout lock, config directory,
-  diagnostics, and Reload. Sharing holds the GitLab URL and project (`shareGitLabURL`, `shareGitLabProject`)
-  and the token, which `PageSharing` keeps in the Keychain; all three set show the HTML strip's Share.
-  The optional `shareGitLabOAuthAppID` turns on page comments; `PageComments` owns that contract.
+  diagnostics, and Reload.
 - `statusReset` stores a raw `StatusReset` (`firstKey`|`enter`|`never`), nil for the default `firstKey`,
   resolved by `effectiveStatusReset` and mirrored to `GhosttyApp.statusReset`, which the surface factories'
   keystroke-clear closure reads at keystroke time. Reset to defaults clears it with the glyph settings.

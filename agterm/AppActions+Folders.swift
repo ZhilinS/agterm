@@ -21,4 +21,10 @@ extension AppActions {
         store.deleteFolder(folderID)
         focusActiveSession()
     }
+
+    /// resolvedNewSessionAnchor applies the placement setting to the supplied store's tree; nil appends.
+    func resolvedNewSessionAnchor(in workspaceID: UUID, store: AppStore) -> SessionAnchor? {
+        store.newSessionAnchor(inWorkspace: workspaceID,
+                               placement: settingsModel?.settings.effectiveNewSessionPlacement ?? .end)
+    }
 }

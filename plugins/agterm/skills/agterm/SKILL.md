@@ -921,6 +921,7 @@ Full detail, templates, and the exact `gh` commands are in **troubleshooting.md*
 
 ## Reference files
 
+- **fork.md** — this fork's additions: share a page with the team (`session overlay share`/`comments`), session folders, quick-terminal drag.
 - **reference.md** — full per-command detail: every flag, the JSON return shapes
   (`result.id`/`text`/`exitCode`/`count`/`affected`/`tree`/`windows`/`app`/`restore`/`zmx`/`remote`), error strings, the scratch/overlay/split
   lifecycle, and the keymap.conf format (`map` / `command`, chords, leaders, `--repeat`, `|` alternatives,

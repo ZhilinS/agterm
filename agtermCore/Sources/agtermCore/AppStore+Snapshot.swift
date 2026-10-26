@@ -124,19 +124,4 @@ extension AppStore {
         Workspace(id: snapshot.id, name: snapshot.name, items: workspaceItems(from: snapshot.items),
                   isExpanded: !(snapshot.collapsed ?? false))
     }
-
-    /// Rebuilds items, dropping sessions `keep` rejects; a folder stays even when it ends up empty.
-    func workspaceItems(from items: [WorkspaceItemSnapshot], launchRestore: Bool = false,
-                        keep: (UUID) -> Bool = { _ in true }) -> [WorkspaceItem] {
-        items.compactMap { item in
-            switch item {
-            case .session(let snapshot):
-                keep(snapshot.id) ? .session(session(from: snapshot, launchRestore: launchRestore)) : nil
-            case .folder(let folder):
-                .folder(SessionFolder(id: folder.id, name: folder.name, isExpanded: !(folder.collapsed ?? false),
-                                      sessions: folder.sessions.filter { keep($0.id) }
-                                          .map { session(from: $0, launchRestore: launchRestore) }))
-            }
-        }
-    }
 }

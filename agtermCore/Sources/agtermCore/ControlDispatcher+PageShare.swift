@@ -10,7 +10,7 @@ public protocol PageShareActions {
 extension ControlDispatcher {
     func dispatchSessionOverlayShare(_ request: ControlRequest) async -> ControlResponse {
         guard let sharing = actions as? any PageShareActions else {
-            return ControlResponse(ok: false, error: "page sharing is not supported by this host")
+            return ControlResponse(ok: false, error: ControlActionsUnsupported.message(request.cmd.rawValue))
         }
         switch parseOverlayPane(request.args?.pane) {
         case .rejected(let response): return response

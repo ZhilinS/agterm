@@ -1,0 +1,9 @@
+# Fork: files the fork leaves to upstream. On an upstream merge the `upstream` driver takes upstream's
+# side whole; `.github/workflows/upstream-sync.yml` configures it (`cp -f %B %A`).
+.claude-plugin/marketplace.json merge=upstream
+plugins/agterm/.claude-plugin/plugin.json merge=upstream
+plugins/agterm/.codex-plugin/plugin.json merge=upstream
+CHANGELOG.md merge=upstream
+ARCHITECTURE.md merge=upstream
+.claude/rules/*.md merge=upstream
+site/** merge=upstream
