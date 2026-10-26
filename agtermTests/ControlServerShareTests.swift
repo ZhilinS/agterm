@@ -122,7 +122,9 @@ final class ControlServerShareTests: XCTestCase {
         let url = await server.sessionOverlayComments(web.id.uuidString, window: nil, pane: nil)
 
         XCTAssertEqual(off.error, PageShareError.noComments)
-        XCTAssertEqual(on, ControlResponse(ok: true, result: ControlResult(discussions: [])))
+        var empty = ControlResult()
+        empty.discussions = []
+        XCTAssertEqual(on, ControlResponse(ok: true, result: empty))
         XCTAssertEqual(url.error, PageShareError.notFile)
     }
 }
