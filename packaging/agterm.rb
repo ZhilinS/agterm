@@ -31,7 +31,10 @@ cask "agterm" do
           'grant the terminal running brew App Management or Full Disk Access to skip the first-launch prompt" >&2',
           "sh",
           "{{appdir}}/agterm.app",
-        ]
+        ],
+        # brew sandboxes cask steps; undeclared, the strip fails with EPERM
+        writable_paths: ["agterm.app"],
+        writable_base:  :appdir
   end
 
   zap trash: [
