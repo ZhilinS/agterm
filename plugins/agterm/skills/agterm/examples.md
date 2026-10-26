@@ -321,6 +321,8 @@ agtermctl session overlay open "revdiff HEAD~3" --target "$AGTERM_SESSION_ID" --
 agtermctl session overlay open "revdiff HEAD~3" --target "$AGTERM_SESSION_ID" --size-percent 80 --follow
 # resize the open overlay in place (the program keeps running): shrink to a floating panel, then back to full
 agtermctl session overlay resize --size-percent 60 --target "$AGTERM_SESSION_ID"
+# keep the 60% width but make the panel 240pt tall; read the laid-out size back as overlayWidth/overlayHeight
+agtermctl session overlay resize --height 240 --target "$AGTERM_SESSION_ID"
 agtermctl session overlay resize --full --target "$AGTERM_SESSION_ID"
 # ... later
 agtermctl session overlay close
@@ -727,19 +729,23 @@ agtermctl notify "tests failed" --target "$sid"               # a specific sessi
 
 ## Wait for a session status
 
-Subscribe before starting the work, then select the first matching status event. The initial read
-subscribes from now, so an old completed state is not mistaken for a new completion.
+From a project directory the agent already trusts, start a worker there and block until its agent
+finishes or asks for input, giving up after ten minutes:
 
 ```bash
-export target="$AGTERM_SESSION_ID"
-agtermctl events --json --kind status |
-  jq --unbuffered -e 'select(.session == env.target and .payload.status == "completed")' |
-  head -n 1
+id=$(agtermctl session new --cwd "$PWD" --command "zsh -lc 'claude \"fix the failing tests\"'" --no-select --json | jq -r '.result.id')
+status=$(agtermctl session wait --target "$id" --until completed --until blocked --timeout 600)
+case $? in
+  0) echo "worker $status" ;;
+  2) echo "worker session closed" ;;
+  124) echo "worker timed out" ;;
+  *) echo "wait failed" ;;
+esac
 ```
 
-The pipeline ends after the match. A cursor failure, or a transport failure the CLI does not retry,
-makes `agtermctl events` exit non-zero; preserve pipeline status in automation that must distinguish a
-match from a failed stream.
+The wait returns at once when the status already matches, so a worker that finished before the call is
+not missed. That also means a reused session still showing the previous run's `completed` matches
+immediately: wait for `active` first when the session is not fresh.
 
 ## Relay accepted notifications
 

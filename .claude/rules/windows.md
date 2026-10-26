@@ -85,6 +85,7 @@ session drag are out of scope.
   The reason is an attribute, not a param, despite `AERegistry.h` calling it a parameter: loginwindow
   writes it with `AEPutAttributePtr`. Never switch that read to `paramDescriptor`.
   The GUI-only prompt is keep-in-sync exempt and manually verified.
+- The window-close sheet takes its text from `QuitPrompt.windowCloseMessage` under the same mode rule.
 - A confirmed Live sessions reset (`LiveResetCoordinator.pending`) skips the quit alert, since its own
   dialog or `zmx.reset --force` was the confirmation. `AppDelegate.exitFlush` fixes the order: capture,
   finalize pending closes, then the CHECKED save; only a fully saved snapshot arms the marker and the
@@ -115,21 +116,13 @@ session drag are out of scope.
   `reshowSuppression` is dropped — AppKit makes a clicked window key BEFORE delivering its button action, so
   the toolbar and Dock toggles would otherwise re-show the panel the same click dismissed. This is AppKit
   key-window behavior, so it is manually verified, not unit-tested.
-- `QuickTerminalMetrics.panelSize` owns the frame. The panel is 75% as tall as wide, the width from the screen's shorter side,
-  since a quick look wants rows and a screen-shaped panel is all columns. Unset, it is 90% capped at
-  1000 points: the in-window overlay needed no cap because a window is already modest, and 90% of a large
+- `QuickTerminalMetrics.panelSize` owns the frame. Unset, it is 90% of the focused screen capped at
+  1100x700: the in-window overlay needed no cap because a window is already modest, and 90% of a large
   display is a wall of terminal, not a quick aside. `quickTerminalSizePercent` REPLACES both terms with a
   plain share of the screen rather than raising the cap, a cap in points being what ages badly across
   displays. nil keeps its own path because no single percentage reproduces the pair: the cap binds above
-  roughly 1111 points of shorter side and the share below it. The panel re-frames on every show, so a Settings change
+  roughly 1222x780 points and the share below it. The panel re-frames on every show, so a Settings change
   lands on the next summon and needs no notification.
-- ⌘-drag moves the unzoomed panel. `QuickTerminalPanel.sendEvent` holds the ⌘-mouse-down until the pointer
-  passes `dragThreshold` and forwards it with its up otherwise, since ⌘-click opens links there; it moves
-  by the EVENT's screen location, never `NSEvent.mouseLocation`, which a synthesized event cannot drive.
-  Position memory is per display and per launch, clamped on show by `QuickTerminalMetrics.panelOrigin`; a
-  display with no record centers. A cancelled gesture (`hide`, resign-key, `setZoom`) is swallowed through
-  its release: pinned libghostty runs release handling for a release whose press it never saw.
-  No position control command or read-back: nothing but the pointer sets it.
 - While the quick terminal OWNS THE KEYBOARD, no deck surface may be active. Gate main, split, maximized
   split, scratch, and overlay with `deckInteractive && isActive && !quickTerminal.holdsKey`. Read `holdsKey`,
   never `isVisible`: the predicate is app-level, so it inerts EVERY window, and a PINNED panel (a control

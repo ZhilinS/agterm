@@ -102,7 +102,7 @@ notarize() {
   fi
 }
 
-# build the GitHub release body: the matching CHANGELOG.md section followed by a
+# build the GitHub release body: the matching CHANGELOG-fork.md section followed by a
 # short install note (signed + notarized; Apple Silicon only, macOS 14+).
 release_notes() {
   local section
@@ -115,8 +115,8 @@ release_notes() {
       while (n>=s && body[n] ~ /^[[:space:]]*$/) n--
       for (i=s; i<=n; i++) print body[i]
     }
-  ' "$ROOT/CHANGELOG.md")"
-  [ -n "$section" ] || echo "WARNING: no CHANGELOG.md section for v$VERSION — release body will be the install note only" >&2
+  ' "$ROOT/CHANGELOG-fork.md")"
+  [ -n "$section" ] || echo "WARNING: no CHANGELOG-fork.md section for v$VERSION — release body will be the install note only" >&2
   [ -n "$section" ] && printf '%s\n\n' "$section"
   cat <<EOF
 ---

@@ -9,6 +9,8 @@ import Testing
 @MainActor
 final class MockControlActions: ControlActions {
     enum Call: Equatable {
+        case overlayShare(target: String?, window: String?, pane: OverlayPane?) // fork
+        case overlayComments(target: String?, window: String?, pane: OverlayPane?) // fork
         case tree(window: String?)
         case eventsRead(ControlEventReadOptions)
         case sessionNew(ControlSessionCreateOptions)
@@ -30,6 +32,7 @@ final class MockControlActions: ControlActions {
         case workspaceFocus(target: String?, window: String?, ControlWorkspaceFocusMode)
         case workspaceFilter(window: String?, ControlToggleMode)
         case workspaceExpansion(target: String?, window: String?, expanded: Bool)
+        case workspaceFlag(target: String?, window: String?, ControlToggleMode)
         case sessionFlag(target: String?, window: String?, String?)
         case sessionContext(target: String?, window: String?, context: String?)
         case markSessionSeen(target: String?, window: String?)
@@ -52,6 +55,9 @@ final class MockControlActions: ControlActions {
         case keymapRun(name: String, target: String?, window: String?)
         case hooksReload
         case hooksList
+        case recentList
+        case recentClear
+        case recentOpen(target: String?, window: String?)
         case browserClear
         case browserLinks(LinkOpenMode?)
         case version
@@ -86,11 +92,11 @@ final class MockControlActions: ControlActions {
         case sessionSearch(target: String?, window: String?, text: String?, to: String?)
         case overlayOpen(target: String?, window: String?, ControlSessionOverlayOpenOptions)
         case overlayClose(target: String?, window: String?, pane: OverlayPane?)
+        case overlayVisibility(target: String?, window: String?, pane: OverlayPane?, mode: OverlayVisibilityMode)
         case overlayReload(target: String?, window: String?, pane: OverlayPane?, current: Bool)
         case overlayNavigate(target: String?, window: String?, pane: OverlayPane?, HtmlNavigation)
-        case overlayShare(target: String?, window: String?, pane: OverlayPane?)
-        case overlayComments(target: String?, window: String?, pane: OverlayPane?)
         case overlayResize(target: String?, window: String?, sizePercent: Int?)
+        case overlayPointResize(target: String?, window: String?, sizePercent: Int?, points: OverlayPointSize)
         case overlayResult(target: String?, window: String?, pane: OverlayPane?)
         case overlaySubmit(target: String?, window: String?, pane: OverlayPane?, value: String)
         case pageResult(UUID)
@@ -152,6 +158,7 @@ final class MockControlActions: ControlActions {
     var nextBrowserClearResponse = ControlResponse(ok: true)
     var nextBrowserLinksResponse = ControlResponse(ok: true)
     var nextHooksListResponse = ControlResponse(ok: true)
+    var nextRecentResponse = ControlResponse(ok: true)
     var nextVersionResponse = ControlResponse(ok: true)
     var nextKeymapResponse = ControlResponse(ok: true)
     var nextConfigResponse = ControlResponse(ok: true)
@@ -324,6 +331,11 @@ final class MockControlActions: ControlActions {
         return ControlResponse(ok: true)
     }
 
+    func setWorkspaceFlag(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
+        calls.append(.workspaceFlag(target: target, window: window, mode))
+        return ControlResponse(ok: true, result: ControlResult(id: target))
+    }
+
     func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse {
         calls.append(.sessionFlag(target: target, window: window, mode))
         return ControlResponse(ok: true)
@@ -450,6 +462,21 @@ final class MockControlActions: ControlActions {
     func listHooks() -> ControlResponse {
         calls.append(.hooksList)
         return nextHooksListResponse
+    }
+
+    func listRecentClosed() -> ControlResponse {
+        calls.append(.recentList)
+        return nextRecentResponse
+    }
+
+    func clearRecentClosed() -> ControlResponse {
+        calls.append(.recentClear)
+        return nextRecentResponse
+    }
+
+    func openRecentClosed(_ target: String?, window: String?) -> ControlResponse {
+        calls.append(.recentOpen(target: target, window: window))
+        return nextRecentResponse
     }
 
     func clearBrowser() async -> ControlResponse {
@@ -632,23 +659,25 @@ final class MockControlActions: ControlActions {
         return ControlResponse(ok: true)
     }
 
-    func shareSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) async -> ControlResponse {
-        calls.append(.overlayShare(target: target, window: window, pane: pane))
-        return ControlResponse(ok: true)
-    }
-
-    func sessionOverlayComments(_ target: String?, window: String?, pane: OverlayPane?) async -> ControlResponse {
-        calls.append(.overlayComments(target: target, window: window, pane: pane))
-        return ControlResponse(ok: true)
-    }
-
     func closeSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse {
         calls.append(.overlayClose(target: target, window: window, pane: pane))
         return nextOverlayCloseResponse
     }
 
+    func setSessionOverlayVisibility(_ target: String?, window: String?, pane: OverlayPane?,
+                                     mode: OverlayVisibilityMode) -> ControlResponse {
+        calls.append(.overlayVisibility(target: target, window: window, pane: pane, mode: mode))
+        return ControlResponse(ok: true, result: ControlResult(id: target, text: "hidden"))
+    }
+
     func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?) -> ControlResponse {
         calls.append(.overlayResize(target: target, window: window, sizePercent: sizePercent))
+        return nextOverlayResizeResponse
+    }
+
+    func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?,
+                              points: OverlayPointSize) -> ControlResponse {
+        calls.append(.overlayPointResize(target: target, window: window, sizePercent: sizePercent, points: points))
         return nextOverlayResizeResponse
     }
 

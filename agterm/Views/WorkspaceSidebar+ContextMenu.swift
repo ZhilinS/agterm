@@ -73,14 +73,25 @@ extension WorkspaceSidebar.Coordinator {
         let sessionTargets = node.kind == .session ? store.sidebarSelectionTargets(forContextSession: node.id) : []
         let sessionCount = sessionTargets.count
 
-        // "Clear Status" sits first for a session row with a status, the `agtermctl session status idle` effect.
-        if node.kind == .session, sessionTargets.contains(where: { store.session(withID: $0)?.agentIndicator.status != .idle }) {
-            let clearStatus = NSMenuItem(title: sessionCount == 1 ? "Clear Status" : "Clear Statuses",
-                                         action: #selector(menuClearStatus(_:)), keyEquivalent: "")
-            clearStatus.target = self
-            clearStatus.representedObject = SessionBatchRequest(sessionIDs: sessionTargets)
-            menu.addItem(clearStatus)
-            menu.addItem(.separator())
+        // "Clear Status" sits first for a session row with a status, the `agtermctl session status idle` effect;
+        // "Mark for Attention" is its idle-row counterpart, `session status completed` on the idle targets.
+        if node.kind == .session {
+            let statuses = sessionTargets.compactMap { store.session(withID: $0)?.agentIndicator.status }
+            if statuses.contains(where: { $0 != .idle }) {
+                let clearStatus = NSMenuItem(title: sessionCount == 1 ? "Clear Status" : "Clear Statuses",
+                                             action: #selector(menuClearStatus(_:)), keyEquivalent: "")
+                clearStatus.target = self
+                clearStatus.representedObject = SessionBatchRequest(sessionIDs: sessionTargets)
+                menu.addItem(clearStatus)
+            }
+            if statuses.contains(.idle) {
+                let mark = NSMenuItem(title: "Mark for Attention", action: #selector(menuMarkForAttention(_:)),
+                                      keyEquivalent: "")
+                mark.target = self
+                mark.representedObject = SessionBatchRequest(sessionIDs: sessionTargets)
+                menu.addItem(mark)
+            }
+            if !statuses.isEmpty { menu.addItem(.separator()) }
         }
 
         if node.kind == .workspace || sessionCount <= 1 {
@@ -170,6 +181,14 @@ extension WorkspaceSidebar.Coordinator {
             membership.representedObject = node
             menu.addItem(membership)
             menu.addItem(.separator())
+            // targets every session of the workspace, including the ones the flagged tree layout hides.
+            let flagAll = NSMenuItem(title: store.allSessionsFlagged(inWorkspace: node.id) ? "Unflag All Sessions" : "Flag All Sessions",
+                                     action: #selector(menuToggleWorkspaceFlag(_:)), keyEquivalent: "")
+            flagAll.target = self
+            flagAll.representedObject = node
+            flagAll.isEnabled = store.workspaces.first { $0.id == node.id }?.sessions.isEmpty == false
+            menu.addItem(flagAll)
+            menu.addItem(.separator())
             let delete = NSMenuItem(title: "Delete Workspace", action: #selector(menuDeleteWorkspace(_:)), keyEquivalent: "")
             delete.target = self
             delete.representedObject = node
@@ -181,58 +200,8 @@ extension WorkspaceSidebar.Coordinator {
         return menu
     }
 
-    private func folderMenu(_ node: SidebarNode) -> NSMenu {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        for (title, action) in [("New Session", #selector(menuNewSessionInFolder(_:))), ("Rename", #selector(menuRename(_:))),
-                                ("Copy Name", #selector(menuCopyName(_:)))] {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            item.representedObject = node
-            menu.addItem(item)
-        }
-        menu.addItem(.separator())
-        let delete = NSMenuItem(title: "Delete Folder", action: #selector(menuDeleteFolder(_:)), keyEquivalent: "")
-        delete.target = self
-        delete.representedObject = node
-        menu.addItem(delete)
-        return menu
-    }
-
-    /// "Move to" with a `Workspaces` and a `Folders` section; a target that already holds every session is left out.
-    private func moveToItem(for sessionIDs: [UUID]) -> NSMenuItem? {
-        let containers = sessionIDs.compactMap { id in store.containerLocation(ofSession: id).map { $0.folder ?? $0.workspace } }
-        let workspaces = store.workspaces.filter { workspace in containers.contains { $0 != workspace.id } }
-        let folders = store.workspaces.flatMap { workspace in
-            workspace.folders.filter { folder in containers.contains { $0 != folder.id } }.map { (workspace, $0) }
-        }
-        guard !workspaces.isEmpty || !folders.isEmpty else { return nil }
-        let submenu = NSMenu()
-        submenu.autoenablesItems = false
-        func addItem(_ title: String, _ action: Selector, _ targetID: UUID) {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            item.representedObject = SessionBatchRequest(sessionIDs: sessionIDs, targetID: targetID)
-            submenu.addItem(item)
-        }
-        if !workspaces.isEmpty {
-            submenu.addItem(.sectionHeader(title: "Workspaces"))
-            for workspace in workspaces { addItem(workspace.name, #selector(menuMove(_:)), workspace.id) }
-        }
-        if !folders.isEmpty {
-            if !workspaces.isEmpty { submenu.addItem(.separator()) }
-            submenu.addItem(.sectionHeader(title: "Folders"))
-            for (workspace, folder) in folders {
-                addItem("\(folder.name) — \(workspace.name)", #selector(menuMoveToFolder(_:)), folder.id)
-            }
-        }
-        let moveTo = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
-        moveTo.submenu = submenu
-        return moveTo
-    }
-
     /// Wraps session batch commands so menu items can carry both the selected ids and a target workspace.
-    private final class SessionBatchRequest {
+    final class SessionBatchRequest {
         let sessionIDs: [UUID]
         let targetID: UUID?
         init(sessionIDs: [UUID], targetID: UUID? = nil) {
@@ -241,14 +210,14 @@ extension WorkspaceSidebar.Coordinator {
         }
     }
 
-    @objc private func menuRename(_ sender: NSMenuItem) {
+    @objc func menuRename(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
         renameController.beginEditing(node: node)
     }
 
     /// Copies the clicked row's name — `Session.displayName`, or the workspace's — to the general
     /// pasteboard.
-    @objc private func menuCopyName(_ sender: NSMenuItem) {
+    @objc func menuCopyName(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
         let name = switch node.kind {
         case .session: store.session(withID: node.id)?.displayName
@@ -262,45 +231,9 @@ extension WorkspaceSidebar.Coordinator {
         NSPasteboard.general.setString(name, forType: .string)
     }
 
-    @objc private func menuMove(_ sender: NSMenuItem) {
+    @objc func menuMove(_ sender: NSMenuItem) {
         guard let request = sender.representedObject as? SessionBatchRequest, let targetID = request.targetID else { return }
         store.moveSessions(request.sessionIDs, toWorkspace: targetID)
-    }
-
-    @objc private func menuMoveToFolder(_ sender: NSMenuItem) {
-        guard let request = sender.representedObject as? SessionBatchRequest, let folderID = request.targetID else { return }
-        store.moveSessions(request.sessionIDs, toFolder: folderID)
-    }
-
-    @objc private func menuNewFolderFromSessions(_ sender: NSMenuItem) {
-        guard let request = sender.representedObject as? SessionBatchRequest, let workspaceID = request.targetID,
-              let folder = store.addFolder(toWorkspace: workspaceID, name: "New Folder", containing: request.sessionIDs) else { return }
-        beginRenamingNewFolder(folder.id)
-    }
-
-    @objc private func menuNewFolder(_ sender: NSMenuItem) {
-        guard let node = sender.representedObject as? SidebarNode,
-              let folder = store.addFolder(toWorkspace: node.id, name: "New Folder") else { return }
-        beginRenamingNewFolder(folder.id)
-    }
-
-    /// The store change reaches the outline on SwiftUI's next update, so rebuild now to have a row to edit.
-    private func beginRenamingNewFolder(_ folderID: UUID) {
-        reconcile()
-        guard let outline = outlineView, let node = cachedNode(folderID),
-              let workspace = store.workspace(forFolder: folderID), let owner = cachedNode(workspace.id) else { return }
-        if !outline.isItemExpanded(owner) { outline.expandItem(owner) }
-        DispatchQueue.main.async { [weak self] in self?.renameController.beginEditing(node: node) }
-    }
-
-    @objc private func menuNewSessionInFolder(_ sender: NSMenuItem) {
-        guard let node = sender.representedObject as? SidebarNode, let workspace = store.workspace(forFolder: node.id) else { return }
-        addSession(toWorkspace: workspace.id, cwd: actions.resolvedNewSessionCwd(), folder: node.id)
-    }
-
-    @objc private func menuDeleteFolder(_ sender: NSMenuItem) {
-        guard let node = sender.representedObject as? SidebarNode else { return }
-        actions.deleteFolder(node.id, in: store)
     }
 
     @objc private func menuClose(_ sender: NSMenuItem) {
@@ -315,9 +248,19 @@ extension WorkspaceSidebar.Coordinator {
         for id in request.sessionIDs { store.setAgentIndicator(AgentIndicator(), forSession: id) }
     }
 
+    @objc private func menuMarkForAttention(_ sender: NSMenuItem) {
+        guard let request = sender.representedObject as? SessionBatchRequest else { return }
+        store.markForAttention(request.sessionIDs)
+    }
+
     @objc private func menuToggleFlag(_ sender: NSMenuItem) {
         guard let request = sender.representedObject as? SessionBatchRequest else { return }
         actions.toggleFlags(request.sessionIDs, in: store)
+    }
+
+    @objc private func menuToggleWorkspaceFlag(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? SidebarNode else { return }
+        store.applyWorkspaceFlag(.toggle, to: node.id)
     }
 
     @objc private func menuDuplicate(_ sender: NSMenuItem) {
@@ -391,7 +334,7 @@ extension WorkspaceSidebar.Coordinator {
     }
 
     /// Adds a session to `workspaceID` at `cwd`, beside `anchor` or at the end of `folder`, and selects it.
-    private func addSession(toWorkspace workspaceID: UUID, cwd: String, anchor: SessionAnchor? = nil, folder: UUID? = nil) {
+    func addSession(toWorkspace workspaceID: UUID, cwd: String, anchor: SessionAnchor? = nil, folder: UUID? = nil) {
         if let session = store.addSession(toWorkspace: workspaceID, cwd: cwd, anchor: anchor) {
             if let folder { store.moveSessions([session.id], toFolder: folder) }
             // creating + selecting from the sidebar context menu is a user-initiated selection on THIS

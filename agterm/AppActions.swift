@@ -134,12 +134,6 @@ final class AppActions {
         return settingsModel?.settings.resolveNewSessionCwd(currentSessionCwd: current, home: home) ?? home
     }
 
-    /// resolvedNewSessionAnchor applies the placement setting to the supplied store's tree; nil appends.
-    func resolvedNewSessionAnchor(in workspaceID: UUID, store: AppStore) -> SessionAnchor? {
-        store.newSessionAnchor(inWorkspace: workspaceID,
-                               placement: settingsModel?.settings.effectiveNewSessionPlacement ?? .end)
-    }
-
     func openDirectory() {
         guard uiActionsEnabled else { return }
         guard let store, let workspaceID = store.currentWorkspaceID else { return }
@@ -239,7 +233,7 @@ final class AppActions {
         if terminalZoomActive { frontmostTerminalZoom?.clear(); return true }
         if let dashboard = frontmostDashboard, dashboard.isOpen { dashboard.close(); focusActiveSession(); return true }
         guard let store, let session = store.activeSession else { return false }
-        if session.overlayActive { store.closeOverlay(session.id); return true }
+        if session.hudActive || session.coverOverlayVisible { store.closeOverlay(session.id); return true }
         if session.scratchActive { store.toggleScratch(session.id); return true }
         // the focused pane's own overlay is the last cover: without this rung ⌘W over one falls straight
         // through and closes the SESSION. An overlay on the other pane is not in front of the user, so it
@@ -327,9 +321,7 @@ final class AppActions {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Close “\(session.displayName)”?"
-        alert.informativeText = closeGraceUndoEnabled
-            ? "The session will close after a short undo window."
-            : "The session will close immediately and can be reopened from File > Open Recent."
+        alert.informativeText = closeConfirmationText(for: [session])
         alert.addButton(withTitle: "Close")
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn
@@ -373,6 +365,8 @@ final class AppActions {
         guard let store, let id = store.selectedSessionID, let path = settingsModel?.keymapPath else { return }
         if store.openOverlay(id, command: ConfigPaths.editorCommand(forPath: path), sizePercent: 95) {
             keymapEditOverlaySession = id
+        } else {
+            beepIfHiddenOverlayRefused(id)
         }
     }
 
@@ -393,6 +387,8 @@ final class AppActions {
         settingsModel.ensureStarterHooks()
         if store.openOverlay(id, command: ConfigPaths.editorCommand(forPath: settingsModel.hooksPath), sizePercent: 95) {
             hooksEditOverlaySession = id
+        } else {
+            beepIfHiddenOverlayRefused(id)
         }
     }
 
@@ -421,6 +417,8 @@ final class AppActions {
         if store.openOverlay(id, command: ConfigPaths.editorCommand(forPath: path), sizePercent: 95) {
             ghosttyEditOverlaySession = id
             ghosttyEditOverlaySnapshot = try? String(contentsOfFile: path, encoding: .utf8)
+        } else {
+            beepIfHiddenOverlayRefused(id)
         }
     }
 
@@ -702,7 +700,7 @@ final class AppActions {
     private func toggleSplit(axis: SplitAxis?) {
         guard uiActionsEnabled else { return }
         guard let store, let session = store.activeSession else { return }
-        guard !session.fullOverlayActive else { return }
+        guard !session.fullOverlayVisible else { return }
         // the deck's `scratchActive` onChange reclaims first responder for the pane, as it does for ⌘J.
         if session.scratchActive { store.toggleScratch(session.id); return }
         store.toggleSplit(session.id, axis: axis)
@@ -717,7 +715,7 @@ final class AppActions {
     func closeSplit() {
         guard uiActionsEnabled else { return }
         guard let store, let session = store.activeSession else { return }
-        guard session.hasSplit, !session.fullOverlayActive else { return }
+        guard session.hasSplit, !session.fullOverlayVisible else { return }
         if session.scratchActive { store.toggleScratch(session.id); return }
         store.closeSplit(session.id)
         focusSplitPane(session, wantSplit: false)
@@ -900,7 +898,7 @@ final class AppActions {
     /// searchable, else the active session's focused pane. Full overlay and quick terminal are unsearchable
     /// (blocked by `coverHidesActiveSession`); a FLOATING overlay leaves the pane visible, so it targets it.
     private func searchTarget() -> GhosttySurfaceView? {
-        if let session = store?.activeSession, session.scratchActive, !session.coverOverlayActive {
+        if let session = store?.activeSession, session.scratchActive, !session.coverOverlayVisible {
             return session.topmostSurface as? GhosttySurfaceView
         }
         // the focused pane hidden under its OWN overlay has no searchable target: the overlay is unsearchable
@@ -920,7 +918,7 @@ final class AppActions {
         if quickTerminal.holdsKey { return true }
         guard let session = store?.activeSession else { return false }
         // a FLOATING overlay leaves the session visible, so only a FULL overlay hides it (and is not searchable).
-        return session.fullOverlayActive
+        return session.fullOverlayVisible
     }
 
     /// Toggle the search bar for the active session; shared by the Find menu item, the palette, and ⌘F.

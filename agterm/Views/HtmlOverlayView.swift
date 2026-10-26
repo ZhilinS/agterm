@@ -47,23 +47,25 @@ struct HtmlOverlayView: View {
                 }
             }
             label
+            PageShareButton(overlay: overlay, tint: foreground) // fork
             if overlay.navigation {
-                button("safari", "Open in Browser", "htmlOverlay.browser", enabled: true) {
-                    _ = registry.navigate(overlay.id, .browser)
-                }
                 switch overlay.source {
                 case .file:
+                    browserButton
                     button("arrow.up.forward.app", "Show in Finder", "htmlOverlay.finder", enabled: true) {
                         _ = registry.navigate(overlay.id, .finder)
                     }
                 case .url:
+                    browserButton
                     button("link", "Copy Link", "htmlOverlay.copy", enabled: true) {
                         registry.copyLink(overlay.id)
                     }
+                case .replica:
+                    EmptyView()
                 }
             }
-            if case .file(let path, _) = overlay.source, PageSharing.shared.config != nil {
-                shareButton(path)
+            button("minus", "Hide", "htmlOverlay.hide", enabled: true) {
+                store.hideHtmlOverlay(overlay.id)
             }
             button("xmark", "Close", "htmlOverlay.close", enabled: true) {
                 store.closeHtmlOverlay(overlay.id)
@@ -72,7 +74,7 @@ struct HtmlOverlayView: View {
         .font(.system(size: 12))
         .foregroundStyle(foreground)
         .padding(.horizontal, 10)
-        .frame(height: 28)
+        .frame(height: HtmlOverlay.stripHeight)
         .background(foreground.opacity(0.06))
         .background(background)
     }
@@ -125,45 +127,14 @@ struct HtmlOverlayView: View {
 
     private var sourceText: String {
         switch overlay.source {
-        case .file(let path, _): path
+        case .file(let path, _), .replica(let path): path
         case .url(let url): url.absoluteString
         }
     }
 
-    // publishing: a click opens the pipeline; idle or failed: a click shares, which retries a failure
-    private func shareButton(_ path: String) -> some View {
-        let share = PageShares.shared.share(forFile: path)
-        return Button {
-            if share?.state == .publishing {
-                if let pipeline = share?.pipelineURL.flatMap(URL.init(string:)) {
-                    _ = HtmlOverlayRegistry.shared.browser.open(pipeline)
-                }
-            } else {
-                Task { await PageSharing.shared.share(file: path, copyLink: true) }
-            }
-        } label: {
-            switch share?.state {
-            case .publishing:
-                ProgressView()
-                    .controlSize(.mini)
-            case .failed:
-                Image(systemName: "exclamationmark.triangle")
-            default:
-                Image(systemName: "square.and.arrow.up")
-            }
-        }
-        .buttonStyle(HtmlToolbarButtonStyle(tint: foreground))
-        .opacity(share?.state == .publishing ? 0.5 : 1)
-        .help(shareHelp(share))
-        .accessibilityLabel("Share")
-        .accessibilityIdentifier("htmlOverlay.share")
-    }
-
-    private func shareHelp(_ share: PageShare?) -> String {
-        switch share?.state {
-        case .publishing: "Deploying to GitLab — click to open the pipeline"
-        case .failed: "Share failed: \(share?.error ?? "unknown error") — click to retry"
-        default: "Share to GitLab Pages: copies the link"
+    private var browserButton: some View {
+        button("safari", "Open in Browser", "htmlOverlay.browser", enabled: true) {
+            _ = HtmlOverlayRegistry.shared.navigate(overlay.id, .browser)
         }
     }
 
@@ -183,7 +154,7 @@ struct HtmlOverlayView: View {
 /// HtmlToolbarButtonStyle draws the page panel's buttons in the theme's text color, which a plain borderless
 /// style would keep at full strength whether disabled or pressed: it dims a disabled button, darkens a pressed
 /// one and marks the hovered one.
-private struct HtmlToolbarButtonStyle: ButtonStyle {
+struct HtmlToolbarButtonStyle: ButtonStyle {
     let tint: Color
 
     func makeBody(configuration: Configuration) -> some View {

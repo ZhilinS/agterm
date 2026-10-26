@@ -61,7 +61,7 @@ extension WindowContentView {
     /// drawable and flicker.
     @ViewBuilder var detailPane: some View {
         let sessions = store.workspaces.flatMap(\.sessions)
-        ZStack {
+        TerminalDeck {
             if store.activeSession == nil {
                 Text("No session selected")
                     .foregroundStyle(.secondary)
@@ -90,7 +90,7 @@ extension WindowContentView {
     @ViewBuilder private func sessionDetail(_ session: Session, isActive: Bool) -> some View {
         // a FULL overlay (no size) hides the panes and draws translucent; a FLOATING one leaves them VISIBLE
         // under a smaller opaque framed panel. Either way the pane(s) stay non-interactive while one is up.
-        let fullOverlay = session.fullOverlayActive
+        let fullOverlay = session.fullOverlayVisible
         // while zoomed OR the dashboard is open (mutually exclusive) the deck stays mounted only to realize
         // surfaces: no focus, no drag targets, no focusable controls behind the full-window modal layer.
         let deckInteractive = terminalZoom.target == nil && !dashboard.isOpen
@@ -138,7 +138,7 @@ extension WindowContentView {
                 // a full overlay renders above the scratch, so it gates focus on top of `focusable` (matching
                 // makeScratchSurface's autoFocus suppression); `deckVisible` keeps drops to an on-screen one.
                 TerminalView(session: session, surfaceKeyPath: \.scratchSurface, makeSurface: makeScratchSurface,
-                             isActive: focusable && !session.coverOverlayActive,
+                             isActive: focusable && !session.coverOverlayVisible,
                              deckVisible: deckInteractive && isActive && !fullOverlay && !quickTerminal.holdsKey,
                              onScreen: deckInteractive && isActive && !fullOverlay)
                     .opacity(fullOverlay ? 0 : 1)
@@ -167,18 +167,18 @@ extension WindowContentView {
                 value = AskAnchorPreferences()
             }
         }
-        // on PROGRAM overlay close refocus the topmost remaining surface via `topmostSurface` — never a pane
+        // when what owns the keyboard changes (a program or page closing, hiding or showing, here or on the
+        // focused pane) hand first responder to the new topmost surface via `topmostSurface`, never a pane
         // hidden under the scratch. One makeFirstResponder loses the race with the overlay's teardown/re-host,
         // so drive the bounded retry the split-collapse survivor uses. Only the visible session reclaims focus:
         // the quick terminal owns it while it covers the window, and its own hide re-grabs the cover.
         //
-        // Keyed on `coverOverlayActive`, not the raw slot: a HUD never took first responder, so reclaiming
-        // it on the HUD's close would instead YANK focus out of whatever holds it — an open ⌘F search field,
-        // an in-progress sidebar rename — and `retryReparentFocus` re-grabs for ~0.36s.
-        .onChange(of: session.coverOverlayActive) { _, isOpen in
-            if !isOpen, deckInteractive, isActive, !quickTerminal.holdsKey {
-                HtmlOverlayRegistry.shared.refocus(session)
-            }
+        // Keyed on `visibleCover`, not the slots: a HUD, a hidden overlay closing, or the other pane's overlay
+        // toggling changes nothing the user types into, and `retryReparentFocus` would yank focus out of an
+        // open ⌘F search field or an in-progress sidebar rename for ~0.36s.
+        .onChange(of: session.visibleCover) { _, _ in
+            guard deckInteractive, isActive, !quickTerminal.holdsKey else { return }
+            HtmlOverlayRegistry.shared.refocus(session)
         }
         // the scratch needs the same retry on SHOW too: its surface is kept alive across hides, so a re-show
         // remounts it and `autoFocus`'s one-shot latch won't re-fire.
@@ -193,11 +193,6 @@ extension WindowContentView {
         // the last host can disappear: re-run it there too, else un-zooming a never-mounted target strands it.
         .onChange(of: session.renderedPanes) { _, _ in store.dropUnrealizedPaneOverlays(of: session) }
         .onChange(of: terminalZoom.target) { _, _ in store.dropUnrealizedPaneOverlays(of: session) }
-        // a closing pane overlay un-hides its pane and loses the same race.
-        .onChange(of: session.openPaneOverlays) { before, after in
-            guard after.count < before.count, deckInteractive, isActive, !quickTerminal.holdsKey else { return }
-            HtmlOverlayRegistry.shared.refocus(session)
-        }
     }
 
     /// The terminal hosts keep their pane roles and surface identity when the split axis changes. Only the
@@ -245,7 +240,7 @@ extension WindowContentView {
         let publishesAskAnchor = store.selectedSessionID == session.id
         // a pane hidden under its OWN overlay is not on screen: it registers no drag types and sets no mouse
         // cursor (the `deckVisible` note in libghostty.md, issue #225 class), and never takes first responder.
-        let covered = session.paneOverlay(pane) != nil
+        let covered = session.paneOverlayVisible(pane)
         let slot: ReferenceWritableKeyPath<Session, (any TerminalSurface)?> =
             pane == .left ? \.surface : \.splitSurface
         // the primary carries `primarySurfaceHostRevision`, which a swap bumps and lazy creation deliberately
@@ -291,8 +286,10 @@ extension WindowContentView {
                                            paneAnchors: HudPaneAnchors) -> some View {
         let style = OverlayPanelStyle.resolve(session)
         // a HUD is passive: it neither takes first responder nor absorbs the clicks around it, so the panel
-        // stays inert as a whole and the session underneath keeps both.
-        let live = isActive && style.interactive
+        // stays inert as a whole and the session underneath keeps both. A hidden program or page is inert the
+        // same way while its host stays mounted, so it keeps running and comes back without a re-host.
+        let shown = !session.overlayHidden
+        let live = isActive && style.interactive && shown
         GeometryReader { geo in
             let detailFrame = CGRect(origin: .zero, size: geo.size)
             let paneFrames = paneAnchors.frames(in: geo)
@@ -329,7 +326,7 @@ extension WindowContentView {
                             TerminalView(session: session, surfaceKeyPath: \.overlaySurface,
                                          makeSurface: { makeOverlaySurface($0, nil) },
                                          isActive: live, deckVisible: live, viewOnly: !style.interactive,
-                                         onScreen: onScreen)
+                                         onScreen: onScreen && shown)
                         }
                     }
                         .frame(width: panelFrame.width, height: panelFrame.height)
@@ -352,6 +349,7 @@ extension WindowContentView {
                         .id("\(session.id.uuidString)-overlay-\(session.overlaySlotGeneration)")
                 }
             }
+            .opacity(shown ? 1 : 0)
             .frame(width: geo.size.width, height: geo.size.height)
             .onAppear { cachePaneFrames(paneFrames, for: session) }
             .onChange(of: paneFrames) { _, value in cachePaneFrames(value, for: session) }
@@ -405,8 +403,9 @@ extension WindowContentView {
     /// the wash would have marked, so without it the unfocused side of a split reads as live.
     @ViewBuilder private func paneOverlayPanel(session: Session, pane: OverlayPane, focused: Bool,
                                                gates: DeckPaneGates) -> some View {
-        let isActive = gates.focusable && !gates.overlaid && focused
-        let deckVisible = gates.visible
+        let shown = session.paneOverlayVisible(pane)
+        let isActive = gates.focusable && !gates.overlaid && focused && shown
+        let deckVisible = gates.visible && shown
         let active = session.paneOverlay(pane) != nil
             && deckHostsSurface(session: session, surface: pane.zoomSurface)
         GeometryReader { geo in
@@ -423,14 +422,15 @@ extension WindowContentView {
                     // terminal, and the pane below is hidden so the window backing shows through.
                     TerminalView(session: session, surfaceKeyPath: pane.surfaceSlot,
                                  makeSurface: { makeOverlaySurface($0, pane) },
-                                 isActive: isActive, deckVisible: deckVisible, onScreen: gates.onScreen)
+                                 isActive: isActive, deckVisible: deckVisible, onScreen: gates.onScreen && shown)
                         .overlay { paneDim(!focused, session: session, color: overlayWashColor(session, pane: pane)) }
                         .id("\(session.id.uuidString)-overlay-\(pane.rawValue)-\(PaneHostIdentity.token(for: pane.zoomSurface, in: session))")
                 }
             }
+            .opacity(shown ? 1 : 0)
             .frame(width: geo.size.width, height: geo.size.height)
         }
-        // inert while empty, like `overlayPanel`.
+        // inert while empty or hidden, like `overlayPanel`.
         .allowsHitTesting(deckVisible && active)
     }
 
@@ -481,7 +481,7 @@ struct DeckPaneGates {
     /// exempt — it is a message, not a program, and the session under it must keep first responder and stay
     /// clickable, which is the whole difference between the two occupants of that slot.
     @MainActor static func coverActive(_ session: Session) -> Bool {
-        session.coverOverlayActive || session.scratchActive
+        session.coverOverlayVisible || session.scratchActive
     }
 }
 
@@ -499,6 +499,9 @@ struct OverlayPanelStyle: Equatable {
     /// a HUD's height in points, which wins over `heightFraction` when set: a fraction of the pane grows
     /// the panel with the window while its text stays the same size.
     var heightPoints: CGFloat?
+    /// a floating program or page sized in points on some axis, laid out by `OverlayPointSize.panelSize`, the
+    /// math the tree's read-back uses; nil leaves both fractions in charge.
+    var pointSizing: PointSizing?
     /// pane fraction held clear at an edge the panel is anchored to; 0 for a sticky HUD.
     var edgeMargin = CGFloat(HudPosition.edgeMarginPercent) / 100
     /// opaque backing: both framed variants, never the chromeless full overlay.
@@ -531,11 +534,17 @@ struct OverlayPanelStyle: Equatable {
         guard session.hudActive else {
             // the full overlay is chromeless: no radius, no border, no shadow.
             let floating = session.overlaySizePercent != nil
-            return OverlayPanelStyle(widthFraction: fraction, heightFraction: fraction, framed: floating,
-                                     cornerRadius: floating ? floatingCornerRadius : 0,
-                                     borderOpacity: floating ? floatingBorderOpacity : 0,
-                                     shadowRadius: floating ? floatingShadowRadius : 0,
-                                     backdrop: floating, interactive: true, position: .center)
+            var style = OverlayPanelStyle(widthFraction: fraction, heightFraction: fraction, framed: floating,
+                                          cornerRadius: floating ? floatingCornerRadius : 0,
+                                          borderOpacity: floating ? floatingBorderOpacity : 0,
+                                          shadowRadius: floating ? floatingShadowRadius : 0,
+                                          backdrop: floating && !session.overlayHidden, interactive: true,
+                                          position: .center)
+            if let percent = session.overlaySizePercent, !session.overlayPoints.isEmpty {
+                style.pointSizing = PointSizing(sizePercent: percent, points: session.overlayPoints,
+                                                chrome: session.htmlOverlay?.chrome ?? 0)
+            }
+            return style
         }
         // a HUD with no measured height has not been through `openHud` yet; falling back to the width would
         // put the square back for exactly the frame that would be seen first.
@@ -569,23 +578,44 @@ struct OverlayPanelStyle: Equatable {
                band: position.verticalBand)
     }
 
-    func panelHeight(paneHeight: CGFloat) -> CGFloat { heightPoints ?? paneHeight * heightFraction }
+    func panelHeight(paneHeight: CGFloat) -> CGFloat {
+        if let pointSizing { return pointSizing.size(in: CGSize(width: 1, height: paneHeight)).height }
+        return heightPoints ?? paneHeight * heightFraction
+    }
+
+    func panelWidth(paneWidth: CGFloat) -> CGFloat {
+        guard let pointSizing else { return paneWidth * widthFraction }
+        return pointSizing.size(in: CGSize(width: paneWidth, height: 1)).width
+    }
 
     /// The same math across the pane's WIDTH, positive rightward, off the anchor's column. The margin always
     /// fits here too: `HudLayout.clampSizePercent(_:for:)` bounds every width, the caller's `--size-percent`
     /// included, at the `maxSizePercent` two margins fill the rest of, and past it only for a sticky panel,
     /// which holds no margin.
     func horizontalOffset(paneWidth: CGFloat) -> CGFloat {
-        offset(along: paneWidth, fraction: widthFraction, band: position.horizontalBand)
+        offset(along: paneWidth, fraction: panelWidth(paneWidth: paneWidth) / max(paneWidth, 1),
+               band: position.horizontalBand)
     }
 
     /// Applies the panel's size and anchor inside one session or pane bounds rect.
     func panelFrame(in pane: CGRect) -> CGRect {
-        let size = CGSize(width: pane.width * widthFraction, height: panelHeight(paneHeight: pane.height))
+        let size = CGSize(width: panelWidth(paneWidth: pane.width), height: panelHeight(paneHeight: pane.height))
         let center = CGPoint(x: pane.midX + horizontalOffset(paneWidth: pane.width),
                              y: pane.midY + verticalOffset(paneHeight: pane.height))
         return CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2,
                       width: size.width, height: size.height)
+    }
+
+    struct PointSizing: Equatable {
+        let sizePercent: Int
+        let points: OverlayPointSize
+        let chrome: Double
+
+        func size(in bounds: CGSize) -> CGSize {
+            let size = OverlayPointSize.panelSize(in: (Double(bounds.width), Double(bounds.height)),
+                                                  sizePercent: sizePercent, points: points, chrome: chrome)
+            return CGSize(width: size.width, height: size.height)
+        }
     }
 
     /// One axis' travel: half the free room left after the panel and its edge margin, signed by the band.

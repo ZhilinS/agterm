@@ -219,7 +219,14 @@ final class SettingsModel {
     func setCursorBlink(_ value: Bool?) { settings.cursorBlink = value; persistAndApply() }
     // sidebar behavior, not a ghostty key; the Coordinator reads the mirror on the next click.
     func setWorkspaceRowClickExpands(_ value: Bool?) { settings.workspaceRowClickExpands = value; persistAndApply() }
+    // fork: these need the private store; the rest of the fork's settings code is in SettingsModel+Fork.swift
     func setRenameOnDoubleClick(_ value: Bool?) { settings.renameOnDoubleClick = value; persistAndApply() }
+    func setShareGitLabURL(_ value: String) { settings.shareGitLabURL = value.isEmpty ? nil : value; try? settingsStore.save(settings) }
+    func setShareGitLabProject(_ value: String) { settings.shareGitLabProject = value.isEmpty ? nil : value; try? settingsStore.save(settings) }
+    func setShareGitLabOAuthAppID(_ value: String) {
+        settings.shareGitLabOAuthAppID = value.isEmpty ? nil : value
+        try? settingsStore.save(settings)
+    }
     func setInactivePaneMuteStrength(_ value: Int?) { settings.inactivePaneMuteStrength = value; persistAndApply() }
     func setSidebarBackgroundShift(_ value: Int?) { settings.sidebarBackgroundShift = value; persistAndApply() }
     func setSidebarFontSize(_ value: Double?) { settings.sidebarFontSize = value; persistAndApply() }
@@ -347,19 +354,6 @@ final class SettingsModel {
     }
     /// Persist that the first-run welcome has been shown, so it never appears again on this state directory.
     func setWelcomeShown(_ value: Bool?) { settings.welcomeShown = value; try? settingsStore.save(settings) }
-    /// Persist where Share publishes; empty clears it. `PageSharing` reads it at each share.
-    func setShareGitLabURL(_ value: String) {
-        settings.shareGitLabURL = value.isEmpty ? nil : value
-        try? settingsStore.save(settings)
-    }
-    func setShareGitLabProject(_ value: String) {
-        settings.shareGitLabProject = value.isEmpty ? nil : value
-        try? settingsStore.save(settings)
-    }
-    func setShareGitLabOAuthAppID(_ value: String) {
-        settings.shareGitLabOAuthAppID = value.isEmpty ? nil : value
-        try? settingsStore.save(settings)
-    }
     /// Persist the user-idle auto-follow timeout (nil = off) and push it into every open window's `AppStore`
     /// (a newly opened window seeds itself via `applyAutoFollow(to:)`).
     func setAutoFollowAttention(_ value: String?) {
@@ -801,10 +795,6 @@ final class SettingsModel {
 
     private func applyWorkspaceRowClickExpands() {
         GhosttyApp.shared.setWorkspaceRowClickExpands(settings.workspaceRowClickExpands ?? true)
-    }
-
-    private func applyRenameOnDoubleClick() {
-        GhosttyApp.shared.setRenameOnDoubleClick(settings.renameOnDoubleClick ?? true)
     }
 
     private func applyAttentionButtonEnabled() {

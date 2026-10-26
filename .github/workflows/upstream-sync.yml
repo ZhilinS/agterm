@@ -8,7 +8,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  issues: write
 
 jobs:
   sync:
@@ -16,7 +15,7 @@ jobs:
     timeout-minutes: 10
     env:
       # ponytail: with GITHUB_TOKEN the sync PR's CI waits for approval and a release touching .github/workflows
-      # cannot be pushed; a SYNC_TOKEN PAT with contents, pull-requests, issues and workflows write fixes both
+      # cannot be pushed; a SYNC_TOKEN PAT with contents, pull-requests and workflows write fixes both
       GH_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       UPSTREAM: umputun/agterm
@@ -44,6 +43,8 @@ jobs:
           if git ls-remote --exit-code --heads origin "sync/$tag" >/dev/null; then open_pr; exit 0; fi
           git config user.name github-actions
           git config user.email github-actions@github.com
+          # .gitattributes routes upstream-owned versions and docs here
+          git config merge.upstream.driver 'cp -f %B %A'
           git checkout -b "sync/$tag" origin/master
           if git merge --no-ff -m "Merge upstream $tag" "$ref"; then
             git push origin "sync/$tag"
@@ -51,8 +52,7 @@ jobs:
             exit 0
           fi
           conflicts="$(git diff --name-only --diff-filter=U)"
-          git merge --abort
-          title="upstream $tag: merge conflict"
-          if [ -z "$(gh issue list --state open --search "\"$title\" in:title" --json number -q '.[0].number')" ]; then
-            gh issue create --title "$title" --body "$(printf 'Conflicts merging %s into master:\n\n```\n%s\n```\n\nRelease: https://github.com/%s/releases/tag/%s' "$tag" "$conflicts" "$UPSTREAM" "$tag")"
-          fi
+          git merge --abort || true
+          echo "::error title=upstream $tag: merge conflict::$(echo "$conflicts" | paste -sd ' ' -)"
+          printf '### Conflicts merging %s\n\n```\n%s\n```\n' "$tag" "$conflicts" >> "$GITHUB_STEP_SUMMARY"
+          exit 1

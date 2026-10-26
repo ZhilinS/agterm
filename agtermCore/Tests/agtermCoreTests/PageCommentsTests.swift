@@ -294,7 +294,8 @@ struct PageCommentsTests {
 
         let response = await PageComments.response(file: "/tmp/page.html", config: config, transport: gitLab)
 
-        #expect(response == ControlResponse(ok: true, result: ControlResult(discussions: [])))
+        #expect(response.ok)
+        #expect(response.result?.discussions == [])
         #expect(await gitLab.keys.count == 1)
     }
 

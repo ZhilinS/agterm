@@ -46,10 +46,8 @@ paths:
   is enabled.
 - A workspace-row click toggles expansion through the outline action, excluding the disclosure frame.
   Defer by `NSEvent.doubleClickInterval` and cancel on double-click so rename does not flicker through a
-  toggle. With the `renameOnDoubleClick` setting off, a workspace or folder double-click does not rename, so
-  the click toggles at once without the deferral. This click routing is keep-in-sync exempt.
-  `GhosttyApp.workspaceRowClickExpands` (default on) gates the whole-row target only; the disclosure
-  triangle toggles natively and stays unconditional.
+  toggle. This click routing is keep-in-sync exempt. `GhosttyApp.workspaceRowClickExpands` (default on)
+  gates the whole-row target only; the disclosure triangle toggles natively and stays unconditional.
   The deferred item re-reads that mirror when it fires, so turning the setting off inside the deferral
   window cancels the pending toggle. Route the row-click toggle through `outline.animator()` so it animates
   like the triangle; a bare `expandItem`/`collapseItem` silently drops the animation. Do not gate that on
@@ -73,8 +71,8 @@ paths:
   `rightMouseDown`, which ignores a left-button event; `SidebarControlClickTests` pins it on CI.
   The workspace row's `AddSessionButton` passes a Control-click up the responder chain to it, since NSButton
   would otherwise fire the "+" action.
-  `sidebarSelectionTargets` filters through the visible projection. Batch move, soft close, flag, and
-  clear-status operate on all targets.
+  `sidebarSelectionTargets` filters through the visible projection. Batch move, soft close, flag,
+  clear-status, and mark-for-attention operate on all targets.
 - Copy Name writes `Session.displayName`, or the workspace name, to `NSPasteboard.general`. A blank
   workspace name and a vanished row both count as absent, and nothing to copy leaves the pasteboard
   untouched rather than clearing it. No control form — see `control-api.md`.
@@ -106,6 +104,8 @@ paths:
   would make every script that reads it mode-aware.
 - Mode flips call `reselectIfSelectionHidden` only when the active session would disappear. Mutators
   no-op without saving on unknown/unchanged IDs and prune transient selection when rows disappear.
+- Workspace rows offer Flag All Sessions / Unflag All Sessions over every session of the workspace, hidden ones
+  included, disabled when it has none; `workspace.flag` is the control form.
 - GUI surfaces are `flagged-view-toggle`, row Flag/Unflag, View-menu Show Flagged/Show All, Flag Session,
   Clear Flagged, palette entries, and keyless built-ins `toggleFlaggedView`/`toggleFlag`. Clear Flagged
   is not a built-in and confirms unless under XCUITest.

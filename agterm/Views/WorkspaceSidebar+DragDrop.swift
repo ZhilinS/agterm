@@ -247,21 +247,6 @@ extension WorkspaceSidebar.Coordinator {
         clearSpringLoadedTracking()
     }
 
-    private func collapseSpringLoaded(keeping count: Int) {
-        while springLoadedIDs.count > count {
-            let id = springLoadedIDs.removeLast()
-            guard let outlineView, let node = cachedNode(id), outlineView.isItemExpanded(node) else { continue }
-            suppressExpansionPersist = true
-            outlineView.collapseItem(node)
-            suppressExpansionPersist = false
-        }
-    }
-
-    private func cancelPendingSpringLoad() {
-        pendingSpringLoadedExpansion?.workItem.cancel()
-        pendingSpringLoadedExpansion = nil
-    }
-
     /// Drops the pending spring-load work item and the opened-row tracking WITHOUT collapsing, so a workspace
     /// the drag spring-opened stays open on a successful drop: a `moveSessions` accept never changes the
     /// selection, so `syncSelection`'s reveal can't re-expand it and collapsing would hide the moved row.
