@@ -1,5 +1,11 @@
 # Fork changelog
 
+## v0.38.1-fork.1 - 2026-10-26
+
+### Improved
+
+- **Up to date with agterm 0.38.1.** Everything upstream shipped through [v0.38.1](https://github.com/umputun/agterm/releases/tag/v0.38.1) is included. Session folders, quick-terminal drag and page sharing behave as before.
+
 ## v0.36.0-fork.5 - 2026-10-21
 
 ### New
