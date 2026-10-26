@@ -23,8 +23,16 @@ extension ControlDispatcher {
             if pane != nil, request.args?.sizePercent != nil {
                 return ControlResponse(ok: false, error: PaneOverlayError.sizePercentConflict)
             }
+            let points = OverlayPointSize(width: request.args?.width, height: request.args?.height)
+            if pane != nil, !points.isEmpty {
+                return ControlResponse(ok: false, error: PaneOverlayError.pointsConflict)
+            }
             if let percent = request.args?.sizePercent, !(1...100).contains(percent) {
                 return ControlResponse(ok: false, error: "session.overlay.open: --size-percent must be 1...100")
+            }
+            if let failure = Self.overlayPointFailure(points) { return failure }
+            if !points.isEmpty, request.args?.sizePercent == nil {
+                return ControlResponse(ok: false, error: OverlayPointError.needsPercent)
             }
             return actions.openSessionOverlay(request.target, window: request.args?.window,
                                               options: ControlSessionOverlayOpenOptions(
@@ -40,7 +48,8 @@ extension ControlDispatcher {
                                                 javascript: request.args?.javascript ?? false,
                                                 chromeless: request.args?.chromeless ?? false,
                                                 persistent: request.args?.persistent ?? false,
-                                                browse: request.args?.browse ?? false
+                                                browse: request.args?.browse ?? false,
+                                                points: points
                                               ))
         case .sessionOverlayReload:
             switch parseOverlayPane(request.args?.pane) {
@@ -72,17 +81,26 @@ extension ControlDispatcher {
             }
             let wantsFull = request.args?.full == true
             let percent = request.args?.sizePercent
+            let points = OverlayPointSize(width: request.args?.width, height: request.args?.height)
             if wantsFull, percent != nil {
                 return ControlResponse(ok: false, error: "session.overlay.resize: --full is mutually exclusive with --size-percent")
             }
-            if !wantsFull, percent == nil {
-                return ControlResponse(ok: false, error: "session.overlay.resize requires --size-percent or --full")
+            if wantsFull, !points.isEmpty {
+                return ControlResponse(ok: false, error: OverlayPointError.fullConflict)
+            }
+            if !wantsFull, percent == nil, points.isEmpty {
+                return ControlResponse(ok: false, error: "session.overlay.resize requires --size-percent, --width/--height or --full")
             }
             if let percent, !(1...100).contains(percent) {
                 return ControlResponse(ok: false, error: "session.overlay.resize: --size-percent must be 1...100")
             }
+            if let failure = Self.overlayPointFailure(points) { return failure }
+            if points.isEmpty {
+                return actions.resizeSessionOverlay(request.target, window: request.args?.window,
+                                                    sizePercent: wantsFull ? nil : percent)
+            }
             return actions.resizeSessionOverlay(request.target, window: request.args?.window,
-                                                sizePercent: wantsFull ? nil : percent)
+                                                sizePercent: percent, points: points)
         case .sessionOverlayResult:
             if let page = request.args?.page {
                 guard let id = UUID(uuidString: page) else { return ControlResponse(ok: false, error: OverlayHtmlError.invalidPageID) }
@@ -108,24 +126,29 @@ extension ControlDispatcher {
             }
         case .sessionOverlayText:
             return dispatchSessionOverlayText(request)
+        case .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle:
+            let mode: OverlayVisibilityMode = request.cmd == .sessionOverlayHide ? .hide
+                : (request.cmd == .sessionOverlayShow ? .show : .toggle)
+            switch parseOverlayPane(request.args?.pane) {
+            case .rejected(let response): return response
+            case .pane(let pane):
+                return actions.setSessionOverlayVisibility(request.target, window: request.args?.window, pane: pane,
+                                                           mode: mode)
+            }
         case .sessionOverlayJobRun:
             guard let job = request.target?.trimmedOrNil else {
                 return ControlResponse(ok: false, error: "session.overlay.job.run requires a job id")
             }
             guard UUID(uuidString: job) != nil else { return ControlResponse(ok: false, error: "invalid job id") }
             return actions.claimOverlayJob(job)
+        case .sessionOverlayPageServe:
+            guard let token = request.target?.trimmedOrNil else {
+                return ControlResponse(ok: false, error: "session.overlay.page.serve requires a page token")
+            }
+            guard UUID(uuidString: token) != nil else { return ControlResponse(ok: false, error: "invalid page token") }
+            return actions.claimPageServe(token)
         default:
             preconditionFailure("dispatchSessionOverlayCommand called for \(request.cmd.rawValue)")
-        }
-    }
-
-    func dispatchSessionOverlayShare(_ request: ControlRequest) async -> ControlResponse {
-        switch parseOverlayPane(request.args?.pane) {
-        case .rejected(let response): return response
-        case .pane(let pane) where request.cmd == .sessionOverlayComments:
-            return await actions.sessionOverlayComments(request.target, window: request.args?.window, pane: pane)
-        case .pane(let pane):
-            return await actions.shareSessionOverlay(request.target, window: request.args?.window, pane: pane)
         }
     }
 
@@ -133,6 +156,13 @@ extension ControlDispatcher {
         case rejected(ControlResponse)
         case program
         case page(HtmlSource)
+    }
+
+    private static func overlayPointFailure(_ points: OverlayPointSize) -> ControlResponse? {
+        guard [points.width, points.height].allSatisfy({ ($0 ?? 1) > 0 }) else {
+            return ControlResponse(ok: false, error: OverlayPointError.notPositive)
+        }
+        return nil
     }
 
     private static func overlayContent(command: String, args: ControlArgs?) -> OverlayContent {
@@ -161,8 +191,10 @@ extension ControlDispatcher {
             if !command.isEmpty { return reject(OverlayHtmlError.commandAndURL) }
             if args?.wait == true { return reject(OverlayHtmlError.waitWithURL) }
             if args?.cwd != nil { return reject(OverlayHtmlError.cwdWithURL) }
-            if args?.chromeless == true { return reject(OverlayHtmlError.chromelessRequiresFile) }
+            if args?.chromeless == true, args?.navigation == true { return reject(OverlayHtmlError.chromelessWithNavigation) }
+            if args?.chromeless == true, args?.browse == true { return reject(OverlayHtmlError.chromelessWithBrowse) }
             guard let url = HtmlSource.webURL(text) else { return reject(OverlayHtmlError.invalidURL) }
+            if args?.chromeless == true, !HtmlSource.isLoopback(text) { return reject(OverlayHtmlError.chromelessRequiresLoopback) }
             return .page(.url(url))
         }
     }

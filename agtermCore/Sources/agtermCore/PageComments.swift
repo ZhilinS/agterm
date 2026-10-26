@@ -43,7 +43,9 @@ public enum PageComments {
             if let issue = try await gitLab.issue(page: PageShares.id(forFile: path)) {
                 discussions = try await gitLab.discussions(issue: issue.iid)
             }
-            return ControlResponse(ok: true, result: ControlResult(discussions: discussions))
+            var result = ControlResult()
+            result.discussions = discussions
+            return ControlResponse(ok: true, result: result)
         } catch {
             return ControlResponse(ok: false, error: error.localizedDescription)
         }

@@ -171,6 +171,9 @@ public struct ControlSessionAsk: Codable, Sendable, Equatable {
 
 /// A session as projected into the `tree` response.
 public struct ControlSessionNode: Codable, Sendable, Equatable {
+    // fork: set after init, so upstream's init and tail appends never touch these lines
+    /// The owning folder's name; omitted for a loose session.
+    public var folder: String?
     public let id: String
     public let name: String
     public let cwd: String
@@ -214,6 +217,11 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// of the pane (1...100); absent with no overlay AND while a HUD holds the slot, whose size is `hud`'s.
     /// The read side of `session.overlay.resize`.
     public let overlaySizePercent: Int?
+    /// overlayWidth and overlayHeight are a floating program or page's content size in points, after
+    /// `--width`/`--height` and the cap, from the session's last layout; the page strip is not included. Omitted for a full overlay, a HUD, and a
+    /// session not laid out yet. The read side of `session.overlay.open`/`.resize` `--width`/`--height`.
+    public let overlayWidth: Double?
+    public let overlayHeight: Double?
     /// The panes covered by their OWN overlay, ordered left then right (`["left"]`, `["right"]`,
     /// `["left","right"]`); nil/omitted when neither has one. Independent of `overlay`, the session-wide
     /// one — both kinds can be up at once. The read side of `session.overlay.open --pane`; those overlays
@@ -335,15 +343,19 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// an overlay covers nothing here, so `overlay` and `paneOverlays` leave it out.
     public let remoteOverlays: [ControlRemoteOverlayNode]?
     /// htmlOverlays lists the pages in this session's overlay slots, session-wide first then left and right;
-    /// omitted when none is open. `overlay` and `paneOverlays` report their slots as covered too.
-    public let htmlOverlays: [ControlHtmlOverlayNode]?
-    /// The owning folder's name; omitted for a loose session.
-    public let folder: String?
+    /// omitted when none is open. A local page's slot is also reported covered by `overlay` and `paneOverlays`;
+    /// a page shown on the presenting Mac (`remote`) covers nothing here.
+    public var htmlOverlays: [ControlHtmlOverlayNode]?
+    /// hiddenOverlays lists the hidden slots as `session`, `left`, `right`, omitted when none is hidden. A
+    /// hidden local slot still counts in `overlay` and `paneOverlays`, which report occupancy; a remote page
+    /// is listed when the presenting Mac reports it hidden.
+    public let hiddenOverlays: [String]?
 
     public init(id: String, name: String, cwd: String, title: String? = nil, active: Bool, split: Bool,
                 hasSplit: Bool? = nil, backedByZmx: Bool?, splitAxis: String? = nil,
                 splitRatio: Double? = nil, splitFocused: Bool? = nil,
-                overlay: Bool = false, overlaySizePercent: Int? = nil, paneOverlays: [String]? = nil,
+                overlay: Bool = false, overlaySizePercent: Int? = nil, overlayWidth: Double? = nil,
+                overlayHeight: Double? = nil, paneOverlays: [String]? = nil,
                 hud: ControlHudNode? = nil, ask: ControlSessionAsk? = nil, scratch: Bool = false, flagged: Bool = false,
                 commandWait: Bool? = nil, splitCommandWait: Bool? = nil,
                 foreground: [String]? = nil, splitForeground: [String]? = nil,
@@ -358,7 +370,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 liveAttribution: String? = nil, splitLiveAttribution: String? = nil,
                 presentation: ControlPresentationNode? = nil, presenters: ControlPresentersNode? = nil,
                 remoteOverlays: [ControlRemoteOverlayNode]? = nil, htmlOverlays: [ControlHtmlOverlayNode]? = nil,
-                folder: String? = nil) {
+                hiddenOverlays: [String]? = nil) {
         self.id = id
         self.name = name
         self.cwd = cwd
@@ -372,6 +384,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.splitFocused = splitFocused
         self.overlay = overlay
         self.overlaySizePercent = overlaySizePercent
+        self.overlayWidth = overlayWidth
+        self.overlayHeight = overlayHeight
         self.paneOverlays = paneOverlays
         self.hud = hud
         self.ask = ask
@@ -408,13 +422,16 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.presenters = presenters
         self.remoteOverlays = remoteOverlays
         self.htmlOverlays = htmlOverlays
-        self.folder = folder
+        self.hiddenOverlays = hiddenOverlays
     }
 }
 
 /// ControlHtmlOverlayNode is one HTML page in an overlay slot. `file` or `url` is what was opened and what
 /// `session.overlay.reload` loads; `page` is where the user has navigated since, nil until the first load.
 public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
+    // fork: set after init, so upstream's init and tail appends never touch these lines
+    /// share is the file's GitLab Pages share, omitted until it is shared.
+    public var share: ControlPageShareNode?
     /// pane is the pane role, omitted for the session-wide slot.
     public let pane: String?
     /// file and url name the source; exactly one is set.
@@ -447,16 +464,22 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
     public let zoom: Double?
     /// id is the page's identity, the one `session.overlay.result --page` reads; an older server omits it.
     public let id: String?
-    /// share is the file's GitLab Pages share, omitted until it is shared.
-    public let share: ControlPageShareNode?
+    /// hidden is true while the page's slot is hidden, omitted otherwise.
+    public let hidden: Bool?
+    /// remote is true for a page this Mac opened that the presenting Mac shows, omitted otherwise.
+    public let remote: Bool?
+    /// replica is true for a page shown here for the Mac that opened it, omitted otherwise.
+    public let replica: Bool?
 
     public init(pane: String?, file: String? = nil, cwd: String? = nil, url: String? = nil, state: String,
                 error: String?, page: String? = nil, title: String? = nil, canGoBack: Bool? = nil,
                 canGoForward: Bool? = nil, navigation: Bool? = nil, javascript: Bool = false, chromeless: Bool = false,
                 zoom: Double? = nil, id: String? = nil, persistent: Bool = false, browse: Bool = false,
-                share: ControlPageShareNode? = nil) {
+                hidden: Bool? = nil, remote: Bool? = nil, replica: Bool? = nil) {
         self.id = id
-        self.share = share
+        self.hidden = hidden
+        self.remote = remote
+        self.replica = replica
         self.pane = pane
         self.file = file
         self.cwd = cwd
@@ -476,12 +499,14 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
+        case share // fork
         case pane, file, cwd, url, state, error, page, title, canGoBack, canGoForward, navigation, javascript
-        case chromeless, persistent, browse, zoom, id, share
+        case chromeless, persistent, browse, zoom, id, hidden, remote, replica
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        share = try c.decodeIfPresent(ControlPageShareNode.self, forKey: .share) // fork
         pane = try c.decodeIfPresent(String.self, forKey: .pane)
         file = try c.decodeIfPresent(String.self, forKey: .file)
         cwd = try c.decodeIfPresent(String.self, forKey: .cwd)
@@ -499,7 +524,9 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
         browse = try c.decodeIfPresent(Bool.self, forKey: .browse) ?? false
         zoom = try c.decodeIfPresent(Double.self, forKey: .zoom)
         id = try c.decodeIfPresent(String.self, forKey: .id)
-        share = try c.decodeIfPresent(ControlPageShareNode.self, forKey: .share)
+        hidden = try c.decodeIfPresent(Bool.self, forKey: .hidden)
+        remote = try c.decodeIfPresent(Bool.self, forKey: .remote)
+        replica = try c.decodeIfPresent(Bool.self, forKey: .replica)
     }
 }
 
@@ -510,10 +537,13 @@ public struct ControlRemoteOverlayNode: Codable, Sendable, Equatable {
     public let pane: String?
     /// The size requested for a session-wide overlay; what the viewer applied is not reported.
     public let sizePercent: Int?
+    /// pageID names the page the slot holds, the id `htmlOverlays` reports; omitted for a program overlay.
+    public let pageID: String?
 
-    public init(pane: String?, sizePercent: Int?) {
+    public init(pane: String?, sizePercent: Int?, pageID: String? = nil) {
         self.pane = pane
         self.sizePercent = sizePercent
+        self.pageID = pageID
     }
 }
 

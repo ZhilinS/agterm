@@ -193,8 +193,9 @@ struct PageShareTests {
 
         let response = share.response(session: session)
 
-        #expect(response == ControlResponse(ok: true, result: ControlResult(id: session.uuidString, text: "https://x/1/",
-                                                                             share: share.node)))
+        var result = ControlResult(id: session.uuidString, text: "https://x/1/")
+        result.share = share.node
+        #expect(response == ControlResponse(ok: true, result: result))
         #expect(share.node == ControlPageShareNode(url: "https://x/1/", state: "publishing", pipelineURL: "https://p/1"))
     }
 }

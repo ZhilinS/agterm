@@ -37,6 +37,9 @@ extension ControlServer: ControlActions {
     func openSessionOverlay(_ target: String?, window: String?,
                             options: ControlSessionOverlayOpenOptions) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            if store.session(withID: id)?.overlayHidden(options.pane) == true {
+                return ControlResponse(ok: false, error: OverlayVisibilityError.hidden)
+            }
             if let page = options.page {
                 return openHtmlOverlay(in: store, sessionID: id, page: page, options: options)
             }
@@ -53,7 +56,7 @@ extension ControlServer: ControlActions {
             } else {
                 guard store.openOverlay(id, command: options.command, cwd: options.cwd,
                                         wait: options.wait, sizePercent: options.sizePercent,
-                                        backgroundColor: options.backgroundColor) else {
+                                        points: options.points, backgroundColor: options.backgroundColor) else {
                     return ControlResponse(ok: false, error: "overlay already open")
                 }
             }
@@ -79,19 +82,33 @@ extension ControlServer: ControlActions {
         return openSessionOverlay(id.uuidString, window: nil, options: options).ok
     }
 
-    // a page never takes the remote program-job path: the store refuses it while a presenter owns the session
+    // a page the placement rule hands to the presenting Mac is stored, rendered and followed there, so none of
+    // the local persistent store check, page build or `--follow` happens here
     private func openHtmlOverlay(in store: AppStore, sessionID id: UUID, page: HtmlSource,
                                  options: ControlSessionOverlayOpenOptions) -> ControlResponse {
+        let alreadyOpen = options.pane == nil ? "overlay already open" : PaneOverlayError.alreadyOpen
+        let overlay = HtmlOverlay(source: page, navigation: options.navigation, javascript: options.javascript,
+                                  chromeless: options.chromeless, persistent: options.persistent, browse: options.browse)
+        switch store.openRemotePage(id, overlay: overlay, options: options) {
+        case .opened:
+            if case .file = page { schedulePageClaimExpiry(after: AppStore.pageClaimWindow) }
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString, pageID: overlay.id.uuidString))
+        case .slotTaken: return ControlResponse(ok: false, error: alreadyOpen)
+        case .paneMissing: return ControlResponse(ok: false, error: PaneOverlayError.paneNotVisible)
+        case .unsupported: return ControlResponse(ok: false, error: OverlayHtmlError.presenter)
+        case .loopback: return ControlResponse(ok: false, error: OverlayHtmlError.remoteLoopback)
+        case .tooLarge: return ControlResponse(ok: false, error: OverlayHtmlError.remoteTooLarge)
+        case .pointsUnsupported: return ControlResponse(ok: false, error: OverlayPointError.remote)
+        case .local: break
+        }
         if store.session(withID: id)?.remoteOverlays.slot(options.pane) != nil {
-            return ControlResponse(ok: false, error: options.pane == nil ? "overlay already open" : PaneOverlayError.alreadyOpen)
+            return ControlResponse(ok: false, error: alreadyOpen)
         }
         if options.persistent, let failure = HtmlOverlayRegistry.shared.persistentStoreFailure() {
             return ControlResponse(ok: false, error: "session.overlay.open: \(failure)")
         }
-        let overlay = HtmlOverlay(source: page, navigation: options.navigation, javascript: options.javascript,
-                                  chromeless: options.chromeless, persistent: options.persistent, browse: options.browse)
-        if let failure = store.openHtmlOverlay(id, pane: options.pane, overlay: overlay,
-                                               sizePercent: options.sizePercent, backgroundColor: options.backgroundColor) {
+        if let failure = store.openHtmlOverlay(id, pane: options.pane, overlay: overlay, sizePercent: options.sizePercent,
+                                               points: options.points, backgroundColor: options.backgroundColor) {
             return ControlResponse(ok: false, error: failure.message(pane: options.pane))
         }
         // a page exists only once a view asks for it; built here, an accepted persistent page already
@@ -114,6 +131,9 @@ extension ControlServer: ControlActions {
 
     func reloadSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, current: Bool) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            if let response = Self.remotePageResponse(store.reloadRemotePage(id, pane: pane, current: current), session: id) {
+                return response
+            }
             if let failure = HtmlOverlayRegistry.shared.reload(sessionID: id, pane: pane,
                                                                target: current ? .current : .original, store: store) {
                 return ControlResponse(ok: false, error: failure.message)
@@ -125,6 +145,10 @@ extension ControlServer: ControlActions {
     func navigateSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?,
                                 navigation: HtmlNavigation) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            if let response = Self.remotePageResponse(store.navigateRemotePage(id, pane: pane, navigation: navigation),
+                                                      session: id) {
+                return response
+            }
             if let failure = store.htmlOverlayCommandFailure(id, pane: pane) {
                 return ControlResponse(ok: false, error: failure.message)
             }
@@ -139,44 +163,12 @@ extension ControlServer: ControlActions {
         }
     }
 
-    /// The Share button's control twin, minus the clipboard: the socket never writes it, the reply carries the link.
-    func shareSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) async -> ControlResponse {
-        switch sharedFile(target, window: window, pane: pane) {
-        case .failure(let response): return response
-        case .success(let (session, path)):
-            let share = await PageSharing.shared.share(file: path, copyLink: false)
-            return share?.response(session: session) ?? ControlResponse(ok: false, error: PageShareError.notConfigured)
-        }
-    }
-
-    func sessionOverlayComments(_ target: String?, window: String?, pane: OverlayPane?) async -> ControlResponse {
-        switch sharedFile(target, window: window, pane: pane) {
-        case .failure(let response): return response
-        case .success(let (_, path)):
-            guard let config = PageSharing.shared.config else {
-                return ControlResponse(ok: false, error: PageShareError.notConfigured)
-            }
-            return await PageComments.response(file: path, config: config, transport: PageSharing.shared.transport)
-        }
-    }
-
-    /// sharedFile is the session and file of the addressed file page, once sharing is configured.
-    private func sharedFile(_ target: String?, window: String?,
-                            pane: OverlayPane?) -> ControlTargetResolver.Resolution<(UUID, String)> {
-        guard PageSharing.shared.config != nil else {
-            return .failure(ControlResponse(ok: false, error: PageShareError.notConfigured))
-        }
-        switch resolver.resolveSessionTarget(target, window: window) {
-        case .failure(let response): return .failure(response)
-        case .success(let (store, id)):
-            switch store.htmlOverlay(id, pane: pane) {
-            case .failure(let failure): return .failure(ControlResponse(ok: false, error: failure.message))
-            case .success(let page):
-                guard case .file(let file, _) = page.source else {
-                    return .failure(ControlResponse(ok: false, error: PageShareError.notFile))
-                }
-                return .success((id, file))
-            }
+    // nil sends the command on to the page in this Mac's own slot
+    private static func remotePageResponse(_ command: RemotePageCommand, session: UUID) -> ControlResponse? {
+        switch command {
+        case .local: return nil
+        case .sent: return ControlResponse(ok: true, result: ControlResult(id: session.uuidString))
+        case .refused(let error): return ControlResponse(ok: false, error: error)
         }
     }
 
@@ -232,10 +224,23 @@ extension ControlServer: ControlActions {
         }
     }
 
+    func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?,
+                              points: OverlayPointSize) -> ControlResponse {
+        resolver.resolveSession(target, window: window) { store, id in
+            if let failure = store.resizeOverlayInPoints(id, sizePercent: sizePercent, points: points) {
+                return ControlResponse(ok: false, error: failure.message)
+            }
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
+    }
+
     func sessionOverlayResult(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
             guard let session = store.session(withID: id) else {
                 return ControlResponse(ok: false, error: "no such session")
+            }
+            if session.remoteOverlays.slot(pane)?.page != nil {
+                return ControlResponse(ok: false, error: OverlayHtmlError.noResult)
             }
             if let slot = session.remoteOverlays.slot(pane), !slot.ended {
                 return ControlResponse(ok: false, error: OverlayResultError.stillRunning)
@@ -541,7 +546,8 @@ extension ControlServer: ControlActions {
     /// (default false) clears to idle once the session is visited. A non-empty `sound` plays once on apply
     /// (`default`/`beep` = system alert, else a named system sound), validated up-front so an unknown name
     /// errors `unknown sound` leaving the status unchanged; empty counts as none, and with none given a
-    /// TRANSITION into `blocked` plays the Settings "Blocked sound" (`blockedStatusSoundName`).
+    /// TRANSITION into `blocked` plays the Settings "Blocked sound" (`blockedStatusSoundName`). Either sound
+    /// goes to an attached presenter instead when the status pane follows it (`presentStatusSoundRemotely`).
     /// `update.color` (`#rrggbb` glyph tint) and `update.shape` (silhouette) are dispatcher-validated and
     /// ride the EPHEMERAL indicator, lasting only until the next `session.status` without them.
     /// `update.pane` (`StatusPane`, dispatcher-validated, nil = `left`/main) records the pane that set the
@@ -581,6 +587,12 @@ extension ControlServer: ControlActions {
         if case .refused(let owner) = store.applyControlStatus(indicator, forSession: id) {
             return ControlResponse(ok: false, error: "blocked status owned by pane \(owner.rawValue) " +
                 "(write from that pane to change it)")
+        }
+        // the blocked marker goes even when this Mac has no blocked sound: the presenter plays its own setting
+        let explicit = prepared == nil ? nil : update.sound
+        if explicit != nil || (update.status == .blocked && !wasBlocked),
+           store.presentStatusSoundRemotely(PresentationSound(name: explicit), in: session, pane: resolvedPane) {
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
         }
         if let name = update.sound, let prepared {
             statusSoundPlayer.play(name, using: prepared)

@@ -97,9 +97,9 @@ paths:
 - Settings is a 540x680 seven-tab SwiftUI scene with explicit selection defaulting General, preventing
   `com_apple_SwiftUI_Settings_selectedTabIndex` persistence. General holds Mouse and Sessions; the
   global-Ghostty-config toggle and its hint close Sessions, since a third section made the tab scroll.
-  Appearance holds Terminal and Window. Interface groups `InterfaceElement`s two per row, plus
-  Multiple Windows and the quick terminal's panel size, which sits there rather than under Appearance's
-  Window because the panel belongs to no window.
+  Appearance holds Terminal and Window. Interface groups `InterfaceElement`s two per row, with the
+  Multiple Windows toggle as the Sidebar section's last row, plus the quick terminal's panel size,
+  which sits there rather than under Appearance's Window because the panel belongs to no window.
   Notifications holds banner/badge/attention/bounce/sound. Agent Status holds colors/shapes, sound,
   status reset, auto-follow, and Reset. Key Mapping holds the keyboard layout lock, config directory,
   diagnostics, and Reload. Sharing holds the GitLab URL and project (`shareGitLabURL`, `shareGitLabProject`)
@@ -149,8 +149,8 @@ paths:
   cached diagnostics.
 - **Process restore mode is frozen at launch; capture follows the configured next mode.** `none` restores fresh shells, `rerun` uses the captured-command path
   below, and `live` is zmx-backed. Settings changes apply after restart. A live request falls back to
-  `none` when the bundled executable, zsh integration, or password-database login shell is unsupported, and
-  Settings reports the reason. The requested-live latch still claims persisted daemons during fallback; only
+  `none` when the bundled executable, the bundled zsh or fish integration, or the password-database login
+  shell (zsh or fish) is unsupported, and Settings reports the reason. The requested-live latch still claims persisted daemons during fallback; only
   a deliberate `none` or `rerun` launch reaps them. Factories, control status, and reap read the immutable
   requested or active mode. Exit capture and `restore.capture` read the configured next-launch mode.
 - **Command replay is launch-scoped; capture runs at two exits and on demand.**
@@ -244,11 +244,12 @@ paths:
   close and sidebar row close; skip under XCUITest. Control `session.close` must never prompt.
 - `hiddenInterfaceElements` stores raw names and preserves unknown values while toggling known ones; empty
   maps nil. Titlebar cases are `sidebarToggle`, `workspaceName`, `sessionName`, `windowName`, `remoteHost`,
-  `sessionContext`, `recentSessions`, `scratch`, `split`, `dashboard`, `quickTerminal`, `customCommands`;
+  `sessionContext`, `recentSessions`, `scratch`, `split`, `dashboard`, `quickTerminal`, `customCommands`,
+  `overlayToggle`;
   sidebar cases are `newWorkspace`, `newSession`, `flaggedView`, `focusFilter`, and row-level
   `workspaceAddSession`.
-  A `hiddenByDefault` case (`workspaceName` and `customCommands`) is governed by `shownInterfaceElements`
-  instead, the same shape with the opposite sense, and its name in the hidden list is ignored. Attention
+  A `hiddenByDefault` case (`workspaceName`, `customCommands` and `overlayToggle`) is governed by
+  `shownInterfaceElements` instead, the same shape with the opposite sense, and its name in the hidden list is ignored. Attention
   has its separate default-off setting.
   `workspaceName` leads the identity as `workspace — session — window`, looked up from the ACTIVE SESSION
   (`workspace(forSession:)`, never `currentWorkspaceID`, which an empty workspace can hold while the old

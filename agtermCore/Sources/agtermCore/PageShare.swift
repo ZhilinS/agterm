@@ -51,7 +51,9 @@ public struct PageShare: Equatable, Sendable {
         if state == .failed {
             return ControlResponse(ok: false, error: error)
         }
-        return ControlResponse(ok: true, result: ControlResult(id: session.uuidString, text: url, share: node))
+        var result = ControlResult(id: session.uuidString, text: url)
+        result.share = node
+        return ControlResponse(ok: true, result: result)
     }
 }
 
@@ -76,6 +78,12 @@ public enum PageShareError {
     public static let notFile = "only a file page can be shared"
     public static let noComments = "comments are not configured: set the OAuth Application ID in Settings > Sharing"
     static let timedOut = "the pipeline did not finish in 5 minutes"
+}
+
+/// ForkCommands are the fork's commands that upstream's command sets meet only through a `union` at the use.
+enum ForkCommands {
+    /// the page bridge fills a page's own pane for these, like `HtmlBridge.ownOverlay`
+    static let ownOverlay: Set<Command> = [.sessionOverlayShare, .sessionOverlayComments]
 }
 
 /// PageShares publishes file pages to GitLab Pages and keeps each share in memory by `id(forFile:)`, so a file

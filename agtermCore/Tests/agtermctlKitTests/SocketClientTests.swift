@@ -180,6 +180,30 @@ struct SocketClientTests {
         #expect(SocketClient.formatResponse(response).hasPrefix("hooks: /tmp/hooks.conf"))
     }
 
+    @Test func formatsRecentRowsWithFullIdsAndAnEmptyList() {
+        let session = ControlRecentItem(id: "R1", kind: "session", title: "api", subtitle: "project", closedAt: 1,
+                                        workspaceID: "W1", sessionIDs: ["S1"])
+        let workspace = ControlRecentItem(id: "R2", kind: "workspace", title: "project", subtitle: nil, closedAt: 2,
+                                          workspaceID: "W1", sessionIDs: ["S1", "S2"])
+
+        #expect(SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(recent: [session, workspace])))
+            == "R1  session  api (project)\nR2  workspace  project")
+        #expect(SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(recent: [])))
+            == "no recently closed items")
+    }
+
+    @Test func formatsRecentOpenAndSaysWhenTheEntryStays() {
+        let item = ControlRecentItem(id: "R1", kind: "session", title: "api", subtitle: nil, closedAt: 1,
+                                     workspaceID: "W1", sessionIDs: ["S1"])
+        let complete = ControlRecentOpen(item: item, window: "WIN", complete: true)
+        let partial = ControlRecentOpen(item: item, window: "WIN", complete: false)
+
+        #expect(SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(recentOpen: complete)))
+            == "reopened session api")
+        #expect(SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(recentOpen: partial)))
+            == "reopened session api (incomplete: the entry stays in the list)")
+    }
+
     @Test func formatsKeymapWithEveryActionAndTheLiveMenu() {
         let keymap = Keymap(builtinOverrides: [.closeSession: Chord(mods: [.command], key: "e")], commands: [])
         let payload = ControlKeymap.project(
@@ -295,6 +319,7 @@ struct SocketClientTests {
             toggle_horizontal_split     cmd+shift+d
             toggle_scratch              cmd+j
             toggle_terminal_zoom        cmd+shift+return
+            toggle_overlay              cmd+shift+j
             toggle_search               cmd+f
           * toggle_sidebar              t
             select_theme                -
@@ -347,16 +372,6 @@ struct SocketClientTests {
         #expect(!out.contains("diagnostics:"))
         #expect(!out.contains("menu:"), "menu is omitted, not printed empty, when the caller supplied none")
         #expect(out.contains("close_session"))
-    }
-
-    @Test func formatResponsePrintsDiscussionsAsJSON() throws {
-        let discussion = ControlPageDiscussion(id: "d1", notes: [
-            ControlPageNote(id: 1, author: "Ann", body: "a/b", createdAt: "2026-10-21T10:00:00Z", system: false),
-        ])
-        let out = SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(discussions: [discussion])))
-
-        #expect(out == #"[{"id":"d1","notes":[{"author":"Ann","body":"a/b","createdAt":"2026-10-21T10:00:00Z","id":1,"system":false}]}]"#)
-        #expect(SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(discussions: []))) == "[]")
     }
 
     @Test func formatResponsePicksTheKeymapRenderer() {
@@ -1001,6 +1016,17 @@ struct SocketClientTests {
         #expect(lines[1] == "  * shell (split hidden)  [s1]  /tmp")
     }
 
+    @Test(arguments: [([String]?.none, " (overlay)"), (["session"], " (overlay hidden)"), (["left"], " (overlay)")])
+    func formatTreeTagsAHiddenSessionOverlay(hidden: [String]?, tag: String) {
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
+                                         backedByZmx: nil, overlay: true, hiddenOverlays: hidden)
+        let workspace = ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [session])
+        let tree = ControlTree(workspaces: [workspace])
+        let out = SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(tree: tree)))
+        let lines = out.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines[1] == "  * shell\(tag)  [s1]  /tmp")
+    }
+
     @Test func formatTreeTagsAnUnrealizedSession() {
         let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
                                          realized: false)
@@ -1275,7 +1301,7 @@ private final class EventReadScript: @unchecked Sendable {
 
 /// An in-process unix-socket server for the round-trip tests: binds a short temp path, accepts one
 /// connection, reads the request line, records it, and writes back a canned `ControlResponse`.
-private final class StubServer: @unchecked Sendable {
+final class StubServer: @unchecked Sendable {
     let path: String
     private let canned: Data
     private var listenFD: Int32 = -1

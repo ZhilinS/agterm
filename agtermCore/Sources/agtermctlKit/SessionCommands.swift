@@ -19,7 +19,7 @@ struct Session: ParsableCommand {
                       Split.self, Swap.self, Lead.self, Scratch.self, Focus.self, Resize.self, Copy.self, Paste.self,
                       SelectAll.self,
                       Text.self, Status.self, Restore.self, Restart.self, FlagCommand.self, Context.self,
-                      Seen.self, Search.self, Background.self, Overlay.self, Hud.self]
+                      Seen.self, Search.self, Background.self, Overlay.self, Hud.self, Wait.self]
     )
 
     struct New: RequestCommand {
@@ -532,9 +532,21 @@ struct Session: ParsableCommand {
     struct Overlay: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Open, read, resize, or close an ephemeral overlay terminal on a session.",
-            subcommands: [Open.self, Close.self, Resize.self, Reload.self, Navigate.self, Share.self, Comments.self, Result.self, Submit.self,
-                          Copy.self, Text.self, RunJob.self]
+            subcommands: [Share.self, Comments.self, Open.self, Close.self, Hide.self, Show.self, Toggle.self, Resize.self, Reload.self, Navigate.self,
+                          Result.self, Submit.self, Copy.self, Text.self, RunJob.self, PageServe.self]
         )
+
+        static let widthHelp: ArgumentHelp = "Panel content width in points, in place of --size-percent's width (at most 80% of the session)."
+        static let heightHelp: ArgumentHelp = """
+            Panel content height in points, in place of --size-percent's height (at most 80% of the session); \
+            a page's title strip is added on top.
+            """
+
+        static func validatePoints(width: Int?, height: Int?) throws {
+            if [width, height].contains(where: { ($0 ?? 1) <= 0 }) {
+                throw ValidationError("--width/--height must be positive")
+            }
+        }
 
         /// `--pane` validation for the overlay commands: the two pane roles only, deliberately NOT the shared
         /// `validatePaneArgument`, which also accepts `scratch` — there is no scratch pane to cover, and
@@ -558,7 +570,11 @@ struct Session: ParsableCommand {
             @Flag(name: .long, help: "With --html or --url, add back, forward, reload, open in browser, and Show in Finder or Copy Link buttons.")
             var navigation = false
             @Flag(name: .customLong("js"), help: "With --html or --url, let the page run its own JavaScript (off by default).") var javascript = false
-            @Flag(name: .long, help: "With --html, show the page without agterm's strip naming it; ⌘W or session overlay close closes it.") var chromeless = false
+            @Flag(name: .long, help: """
+                With --html, or --url on 127.0.0.1, ::1 or localhost, show the page without agterm's strip naming it; \
+                ⌘W or session overlay close closes it.
+                """)
+            var chromeless = false
             @Flag(name: .long, help: Open.persistentHelp) var persistent = false
             @Flag(name: .long, help: Open.browseHelp) var browse = false
             @Option(name: .long, help: """
@@ -570,6 +586,8 @@ struct Session: ParsableCommand {
             @Flag(name: .long, help: Open.blockHelp) var block = false
             @Flag(name: .long, help: "Select (switch to) the target session after opening the overlay (default: open without switching).") var follow = false
             @Option(name: .long, help: "Render a floating, framed panel at PERCENT (1-100) of the pane instead of full-size.") var sizePercent: Int?
+            @Option(name: .long, help: Overlay.widthHelp) var width: Int?
+            @Option(name: .long, help: Overlay.heightHelp) var height: Int?
             @Option(name: .long, help: "Solid background color (#rrggbb) for the overlay pane, independent of the session's own.") var backgroundColor: String?
             @Option(name: .long, help: """
                 Scope the overlay to ONE split pane (primary/left/top or split/right/bottom), leaving the sibling pane live and \
@@ -590,8 +608,12 @@ struct Session: ParsableCommand {
                 if command == nil, wait || (url != nil && block) { throw ValidationError("a page takes no --wait, and a --url page no --block") }
                 if navigation, command != nil { throw ValidationError("--navigation requires --html or --url") }
                 if javascript, command != nil { throw ValidationError("--js requires --html or --url") }
-                if chromeless, html == nil { throw ValidationError("--chromeless requires --html") }
+                if chromeless, command != nil { throw ValidationError("--chromeless requires --html or a loopback --url") }
                 if chromeless, navigation { throw ValidationError("--chromeless cannot be combined with --navigation") }
+                if chromeless, browse { throw ValidationError("--chromeless cannot be combined with --browse") }
+                if chromeless, let url, HtmlSource.webURL(url) != nil, !HtmlSource.isLoopback(url) {
+                    throw ValidationError("--chromeless with --url requires a loopback host: 127.0.0.1, ::1 or localhost")
+                }
                 if persistent, url == nil { throw ValidationError("--persistent requires --url") }
                 if browse, url == nil { throw ValidationError("--browse requires --url") }
                 if url != nil, cwd != nil { throw ValidationError("--cwd cannot be combined with --url") }
@@ -602,7 +624,14 @@ struct Session: ParsableCommand {
                 if pane != nil, sizePercent != nil {
                     throw ValidationError("--pane cannot be combined with --size-percent (pane overlays are always full)")
                 }
+                if pane != nil, width != nil || height != nil {
+                    throw ValidationError("--pane cannot be combined with --width/--height (pane overlays are always full)")
+                }
                 try Session.validateSizePercent(sizePercent)
+                try Overlay.validatePoints(width: width, height: height)
+                if width != nil || height != nil, sizePercent == nil {
+                    throw ValidationError("--width/--height need --size-percent")
+                }
             }
 
             func makeRequest() throws -> ControlRequest {
@@ -610,7 +639,8 @@ struct Session: ParsableCommand {
                                args: options.withWindow(ControlArgs(cwd: html == nil ? cwd : cwd.map(Overlay.absolutePath),
                                                                      command: command, wait: wait ? true : nil,
                                                                      sizePercent: sizePercent, follow: follow ? true : nil,
-                                                                     pane: pane, color: backgroundColor,
+                                                                     pane: pane, width: width, height: height,
+                                                                     color: backgroundColor,
                                                                      html: html.map(Overlay.absolutePath),
                                                                      navigation: navigation ? true : nil, url: url,
                                                                      javascript: javascript ? true : nil, chromeless: chromeless ? true : nil, persistent: persistent ? true : nil,
@@ -666,23 +696,35 @@ struct Session: ParsableCommand {
         }
 
         struct Resize: RequestCommand {
-            static let configuration = CommandConfiguration(abstract: "Resize an open overlay: floating at a percent, or back to full-pane.")
+            static let configuration = CommandConfiguration(
+                abstract: "Resize an open overlay: floating at a percent or in points, or back to full-pane.",
+                discussion: """
+                    --size-percent re-sizes from that percent, keeping only the --width/--height given with it. \
+                    --width/--height alone change those axes of an overlay that is already floating.
+                    """)
             @Option(name: .long, help: "Resize to a floating, framed panel at PERCENT (1-100) of the pane.") var sizePercent: Int?
+            @Option(name: .long, help: Overlay.widthHelp) var width: Int?
+            @Option(name: .long, help: Overlay.heightHelp) var height: Int?
             @Flag(name: .long, help: "Resize to full-pane (translucent, hides the session).") var full = false
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
-            // require exactly one of --size-percent / --full at parse time (before any connection), so it is a
-            // clean usage error and unit-testable without a socket; the dispatcher re-checks the same rules.
+            // the dispatcher re-checks the same rules; here they are a clean usage error before any connection
             func validate() throws {
+                let points = width != nil || height != nil
                 if full && sizePercent != nil { throw ValidationError("--full cannot be combined with --size-percent") }
-                if !full && sizePercent == nil { throw ValidationError("provide --size-percent PERCENT or --full") }
+                if full && points { throw ValidationError("--full cannot be combined with --width/--height") }
+                if !full && sizePercent == nil && !points {
+                    throw ValidationError("provide --size-percent PERCENT, --width/--height POINTS or --full")
+                }
                 try Session.validateSizePercent(sizePercent)
+                try Overlay.validatePoints(width: width, height: height)
             }
 
             func makeRequest() throws -> ControlRequest {
                 ControlRequest(cmd: .sessionOverlayResize, target: target.target,
-                               args: options.withWindow(ControlArgs(sizePercent: sizePercent, full: full ? true : nil)))
+                               args: options.withWindow(ControlArgs(sizePercent: sizePercent, full: full ? true : nil,
+                                                                    width: width, height: height)))
             }
         }
 
