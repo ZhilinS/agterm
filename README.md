@@ -29,6 +29,7 @@ If you have upstream installed: `brew uninstall --cask agterm` first.
   workspace. A folder lives while it holds sessions: closing or moving out the last one removes it, and
   Reopen Closed Item or Open Recent bring the folder back with the session. ⌘N and the hover `+` add a
   session next to the active one, inside its folder when it has one.
+  A session's companions stay with it: they share its folder and move in and out with it.
   `agtermctl tree` shows `folder: <name>`.
   Upstream declined folders as a model change ([#293](https://github.com/umputun/agterm/discussions/293),
   [#397](https://github.com/umputun/agterm/pull/397),

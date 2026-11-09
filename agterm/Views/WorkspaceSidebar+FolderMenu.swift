@@ -23,6 +23,8 @@ extension WorkspaceSidebar.Coordinator {
 
     /// "Move to" with a `Workspaces` and a `Folders` section; a target that already holds every session is left out.
     func moveToItem(for sessionIDs: [UUID]) -> NSMenuItem? {
+        // a companion moves only with its parent
+        guard sessionIDs.contains(where: { store.session(withID: $0)?.parentID == nil }) else { return nil }
         let containers = sessionIDs.compactMap { id in store.containerLocation(ofSession: id).map { $0.folder ?? $0.workspace } }
         let workspaces = store.workspaces.filter { workspace in containers.contains { $0 != workspace.id } }
         let folders = store.workspaces.flatMap { workspace in

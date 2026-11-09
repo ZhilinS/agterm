@@ -54,9 +54,12 @@ public struct RecentClosedSession: Codable, Equatable, Sendable {
     public let placement: SessionPlacement?
     /// The folder of `placement`, recreated when the close removed it. Optional for the same reason.
     public let folder: ClosedFolder?
+    /// companions are reopened under the parent; optional so an older `recent-closed.json` still decodes.
+    public let companions: [SessionSnapshot]?
 
     public init(workspaceID: UUID, workspaceName: String, workspaceIndex: Int, sessionIndex: Int,
-                snapshot: SessionSnapshot, placement: SessionPlacement? = nil, folder: ClosedFolder? = nil) {
+                snapshot: SessionSnapshot, placement: SessionPlacement? = nil, folder: ClosedFolder? = nil,
+                companions: [SessionSnapshot]? = nil) {
         self.workspaceID = workspaceID
         self.workspaceName = workspaceName
         self.workspaceIndex = workspaceIndex
@@ -64,6 +67,7 @@ public struct RecentClosedSession: Codable, Equatable, Sendable {
         self.snapshot = snapshot
         self.placement = placement
         self.folder = folder
+        self.companions = companions
     }
 }
 

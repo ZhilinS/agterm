@@ -1,5 +1,11 @@
 # Fork changelog
 
+## v0.41.1-fork.1 - 2026-11-09
+
+### Improved
+
+- **Up to date with agterm 0.41.1.** Everything upstream shipped through [v0.41.1](https://github.com/umputun/agterm/releases/tag/v0.41.1) is included, companions, row tints, sidebar density and the session info line among it. A session's companions live in its folder: they follow it into and out of a folder, and a folder made from a session takes them along.
+
 ## v0.38.1-fork.1 - 2026-10-26
 
 ### Improved

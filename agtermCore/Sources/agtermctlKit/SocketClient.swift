@@ -297,8 +297,12 @@ struct SocketClient {
         if let exitCode = response.result?.exitCode {
             return "exit \(exitCode)"
         }
+        if let undoable = response.result?.undoable {
+            let closed = response.result?.affected.map(formatAffected) ?? "ok"
+            return "\(closed) (\(undoable ? "undoable" : "not undoable"))"
+        }
         if let affected = response.result?.affected {
-            return affected == 1 ? "1 session" : "\(affected) sessions"
+            return formatAffected(affected)
         }
         if let count = response.result?.count {
             // keymap.reload reports its parse-diagnostic count; 0 reads as a clean reload.
@@ -330,6 +334,10 @@ struct SocketClient {
         return "ok"
     }
 
+    static func formatAffected(_ affected: Int) -> String {
+        affected == 1 ? "1 session" : "\(affected) sessions"
+    }
+
     static func formatIdentity(_ identity: AppIdentity) -> String {
         guard let commit = identity.commit, !commit.isEmpty else { return identity.version }
         return "\(identity.version) (\(commit))"
@@ -343,6 +351,17 @@ struct SocketClient {
         if status.restartRequired { lines.append("restart agterm to apply the configured mode") }
         if let reason = status.unavailableReason { lines.append("live unavailable: \(reason)") }
         return lines.joined(separator: "\n")
+    }
+
+    /// formatRemoteGroup is a successful group attach: the parent's local id, then one `origin -> local` line
+    /// per companion.
+    static func formatRemoteGroup(parent: String?, group: ControlRemoteGroup?) -> String {
+        let members = group?.companions.map { "  \($0.origin) -> \($0.id ?? "-")" } ?? []
+        return ([parent ?? "ok"] + members).joined(separator: "\n")
+    }
+
+    static func remoteGroupNote(host: String) -> String {
+        "note: \(host) does not report group membership; unlisted companions cannot be detected"
     }
 
     /// A remote host's attachable sessions, one per line, carrying the session id `zmx attach` takes. An
@@ -420,7 +439,9 @@ struct SocketClient {
         guard !items.isEmpty else { return RecentClosedTarget.emptyError }
         return items.map { item in
             let subtitle = item.subtitle.map { " (\($0))" } ?? ""
-            return "\(item.id)  \(item.kind)  \(item.title)\(subtitle)"
+            let companions = item.kind == "session" && item.sessionIDs.count > 1
+                ? " +\(item.sessionIDs.count - 1) companion(s)" : ""
+            return "\(item.id)  \(item.kind)  \(item.title)\(subtitle)\(companions)"
         }.joined(separator: "\n")
     }
 
