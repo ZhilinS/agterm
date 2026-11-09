@@ -82,21 +82,81 @@ public enum WorkspaceItem {
 }
 
 extension Workspace {
-    public init(id: UUID, name: String, items: [WorkspaceItem], isExpanded: Bool = true) {
+    public init(id: UUID, name: String, items: [WorkspaceItem], isExpanded: Bool = true, tint: SidebarTint? = nil) {
         self.id = id
         self.name = name
         self.items = items
         self.isExpanded = isExpanded
+        self.tint = tint
     }
 
-    /// Preorder walk of `items`, which is the visual order. Read only: writes go through the methods below.
+    /// Preorder walk of `items`, which is the visual order. A write is upstream's flat edit, mapped back by
+    /// `regroup`; fork code uses the methods below.
     public var sessions: [Session] {
-        items.flatMap { item -> [Session] in
-            switch item {
-            case .session(let session): [session]
-            case .folder(let folder): folder.sessions
+        get {
+            items.flatMap { item -> [Session] in
+                switch item {
+                case .session(let session): [session]
+                case .folder(let folder): folder.sessions
+                }
             }
         }
+        set { regroup(newValue) }
+    }
+
+    /// Rebuilds `items` from a flat order. A companion joins its parent's folder; another kept session stays in
+    /// its own, a new one joins the folder of the session after it. A folder the write emptied goes, one that
+    /// was already empty keeps its slot.
+    private mutating func regroup(_ flat: [Session]) {
+        var container: [UUID: UUID] = [:]
+        for folder in folders {
+            for session in folder.sessions { container[session.id] = folder.id }
+        }
+        let known = Set(sessions.map(\.id))
+        let emptyFolders = items.enumerated().compactMap { index, item -> (Int, SessionFolder)? in
+            if case .folder(let folder) = item, folder.sessions.isEmpty { (index, folder) } else { nil }
+        }
+        let shells = Dictionary(uniqueKeysWithValues: folders.map { ($0.id, $0) })
+        var placed: [UUID?] = flat.map { container[$0.id] }
+        for index in flat.indices.reversed() where !known.contains(flat[index].id) && flat[index].parentID == nil {
+            // the session after its own companions, which are not placed yet
+            var next = index + 1
+            while next < flat.count, flat[next].parentID == flat[index].id { next += 1 }
+            placed[index] = next < flat.count ? placed[next] : nil
+        }
+        let slots = Dictionary(flat.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for index in flat.indices {
+            if let parent = flat[index].parentID, let slot = slots[parent] { placed[index] = placed[slot] }
+        }
+        var rebuilt: [WorkspaceItem] = []
+        for (session, folderID) in zip(flat, placed) {
+            guard let folderID, var folder = shells[folderID] else {
+                rebuilt.append(.session(session))
+                continue
+            }
+            if let at = rebuilt.firstIndex(where: { if case .folder(let f) = $0 { f.id == folderID } else { false } }),
+               case .folder(var existing) = rebuilt[at] {
+                existing.sessions.append(session)
+                rebuilt[at] = .folder(existing)
+            } else {
+                folder.sessions = [session]
+                rebuilt.append(.folder(folder))
+            }
+        }
+        items = rebuilt
+        for (index, folder) in emptyFolders { addFolder(folder, at: index) }
+    }
+
+    /// A clamped `items` slot moved past any companions there, so nothing lands inside a parent's group.
+    func groupBoundary(_ slot: Int) -> Int {
+        var slot = max(0, min(slot, items.count))
+        while slot < items.count, case .session(let session) = items[slot], session.parentID != nil { slot += 1 }
+        return slot
+    }
+
+    /// One flag per `items` entry, true for a companion session, whose row nests under its parent's.
+    public var itemCompanionFlags: [Bool] {
+        items.map { if case .session(let session) = $0 { session.parentID != nil } else { false } }
     }
 
     public var folders: [SessionFolder] {
@@ -176,7 +236,7 @@ extension Workspace {
 
     /// Inserts loose at a clamped `items` slot, which can sit before a folder where a flat index cannot.
     public mutating func insertSession(_ session: Session, atItem slot: Int) {
-        items.insert(.session(session), at: max(0, min(slot, items.count)))
+        items.insert(.session(session), at: session.parentID == nil ? groupBoundary(slot) : max(0, min(slot, items.count)))
     }
 
     public mutating func insertSession(_ session: Session, after anchorID: UUID) -> Bool {
@@ -225,13 +285,16 @@ extension Workspace {
     /// Inserts into the folder at a clamped slot; no-op on an unknown folder.
     public mutating func insertSession(_ session: Session, inFolder folderID: UUID, at slot: Int? = nil) {
         updateFolder(folderID) { folder in
-            folder.sessions.insert(session, at: max(0, min(slot ?? folder.sessions.count, folder.sessions.count)))
+            var at = max(0, min(slot ?? folder.sessions.count, folder.sessions.count))
+            // a top-level session never lands inside a parent's group
+            while session.parentID == nil, at < folder.sessions.count, folder.sessions[at].parentID != nil { at += 1 }
+            folder.sessions.insert(session, at: at)
         }
     }
 
     /// Inserts a folder at the clamped item slot, nil appends.
     public mutating func addFolder(_ folder: SessionFolder, at slot: Int? = nil) {
-        items.insert(.folder(folder), at: max(0, min(slot ?? items.count, items.count)))
+        items.insert(.folder(folder), at: groupBoundary(slot ?? items.count))
     }
 
     @discardableResult

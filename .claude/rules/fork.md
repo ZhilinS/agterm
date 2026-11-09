@@ -48,6 +48,11 @@ paths:
 - Session folders: `Workspace.items` holds sessions and one-level folders, and `sessions` is their
   preorder walk. Persistence writes `items` in place of upstream's `sessions` key and does not decode
   upstream's shape, so an upstream persistence test's JSON literal needs `items` in the fork.
+  Upstream's flat writes to `sessions` go through its setter, `regroup`: a companion takes its parent's
+  folder, a new session the folder of the session after it, and a folder the write emptied goes.
+  Fork moves carry a parent's companions (`movingGroupIDs`) and never move a companion alone.
+  An ordinary-tree drop resolves in `items` space (`resolveItemMove`); the flagged tree, a gap among
+  companions and a companion-only drag stay on upstream's flat path.
 - Quick terminal: `QuickTerminalMetrics.panelSize` makes the panel 75% as tall as it is wide, taking the
   width from the screen's shorter side. Unset, the width is 90% capped at 1000 points.
   ⌘-drag moves the unzoomed panel. `QuickTerminalPanel.sendEvent` holds the ⌘-mouse-down until the

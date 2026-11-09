@@ -26,7 +26,7 @@ extension AppStore {
     @discardableResult
     public func addFolder(toWorkspace workspaceID: UUID, name: String, containing sessionIDs: [UUID] = []) -> SessionFolder? {
         guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
-        let wanted = Set(sessionIDs)
+        let wanted = movingGroupIDs(sessionIDs)
         let moving = workspaces[index].sessions.map(\.id).filter(wanted.contains)
         var slot: Int?
         if let first = moving.first {
@@ -89,7 +89,7 @@ extension AppStore {
         guard let target = workspaces.firstIndex(where: { $0.id == targetID }) else { return 0 }
         // the slot is in `SidebarDrop`'s space: moving loose sessions already taken out, folders as they stand.
         // one this move empties is gone when the block lands, so the slot comes down by one per such folder
-        let ids = Set(sessionIDs)
+        let ids = movingGroupIDs(sessionIDs)
         var position = 0
         var emptiedAhead = 0
         for item in workspaces[target].items where position < slot {
@@ -106,8 +106,14 @@ extension AppStore {
             }
         }
         let moving = removeForMove(sessionIDs)
-        for (offset, session) in moving.sessions.enumerated() {
-            workspaces[target].insertSession(session, atItem: slot - emptiedAhead + offset)
+        var previous: UUID?
+        for session in moving.sessions {
+            if let previous {
+                _ = workspaces[target].insertSession(session, after: previous)
+            } else {
+                workspaces[target].insertSession(session, atItem: slot - emptiedAhead)
+            }
+            previous = session.id
         }
         finishMove(moving)
         return moving.sessions.count
@@ -120,11 +126,22 @@ extension AppStore {
         case .after(let id), .before(let id): id
         }
         guard let target = workspaces.firstIndex(where: { $0.sessions.contains { $0.id == anchorID } }) else { return 0 }
-        let moving = removeForMove(sessionIDs.filter { $0 != anchorID })
-        var next = anchor
+        if !sessionIDs.isEmpty, sessionIDs.allSatisfy({ session(withID: $0)?.parentID != nil }) {
+            // companions reorder among their siblings through upstream's move, which refuses any other slot
+            let remaining = workspaces[target].sessions.filter { !sessionIDs.contains($0.id) }
+            guard let slot = remaining.firstIndex(where: { $0.id == anchorID }) else { return 0 }
+            let index = if case .after = anchor { slot + 1 } else { slot }
+            return moveSessions(sessionIDs, toWorkspace: workspaces[target].id, at: index)
+        }
+        // the anchor's own group stays put, so moving a parent beside its companion is a no-op
+        let anchorParent = session(withID: anchorID)?.parentID ?? anchorID
+        let anchorGroup = movingGroupIDs([anchorParent])
+        let moving = removeForMove(sessionIDs.filter { !anchorGroup.contains($0) })
+        let start = topLevelAnchor(anchor, in: workspaces[target])
+        var next = start
         for session in moving.sessions {
             workspaces[target].insertSession(session, anchor: next)
-            if case .after = anchor { next = .after(session.id) }
+            if case .after = start { next = .after(session.id) }
         }
         finishMove(moving)
         return moving.sessions.count
@@ -147,8 +164,14 @@ extension AppStore {
             isExpanded: folder.isExpanded,
             itemIndex: ahead.count(where: survivors.contains)
         ))
-        for (offset, session) in moving.sessions.enumerated() {
-            workspaces[target].insertSession(session, inFolder: folderID, at: index.map { $0 + offset })
+        var previous: UUID?
+        for session in moving.sessions {
+            if let previous {
+                _ = workspaces[target].insertSession(session, after: previous)
+            } else {
+                workspaces[target].insertSession(session, inFolder: folderID, at: index)
+            }
+            previous = session.id
         }
         finishMove(moving)
         return moving.sessions.count
@@ -157,12 +180,36 @@ extension AppStore {
     private func removeForMove(_ sessionIDs: [UUID]) -> (sessions: [Session], before: [[[UUID]]]) {
         let before = workspaces.map(\.itemShape)
         var moving: [Session] = []
-        for id in orderedSessionIDs(matching: Set(sessionIDs)) {
+        for id in orderedSessionIDs(matching: movingGroupIDs(sessionIDs)) {
             guard let location = location(ofSession: id),
                   let session = workspaces[location.workspaceIndex].removeSession(id: id) else { continue }
             moving.append(session)
         }
         return (moving, before)
+    }
+
+    /// `movingGroupIDs` in tree order, the sessions a fork move of `sessionIDs` takes.
+    public func movingGroup(_ sessionIDs: [UUID]) -> [UUID] {
+        orderedSessionIDs(matching: movingGroupIDs(sessionIDs))
+    }
+
+    /// The parents among `sessionIDs` with their companions: a companion moves only with its parent here, as in
+    /// upstream's moves, so a group never splits across containers.
+    func movingGroupIDs(_ sessionIDs: [UUID]) -> Set<UUID> {
+        let parents = sessionIDs.filter { session(withID: $0)?.parentID == nil }
+        return Set(parents + parents.flatMap { companions(of: $0).map(\.id) })
+    }
+
+    /// A top-level anchor outside any companion group: one naming a group member stands after the group's last.
+    func topLevelAnchor(_ anchor: SessionAnchor, in workspace: Workspace) -> SessionAnchor {
+        let id = switch anchor {
+        case .after(let id), .before(let id): id
+        }
+        let sessions = workspace.sessions
+        guard var parent = sessions.firstIndex(where: { $0.id == id }) else { return anchor }
+        if case .before = anchor, sessions[parent].parentID == nil { return anchor }
+        while parent > 0, sessions[parent].parentID != nil { parent -= 1 }
+        return .after(sessions[Self.groupEnd(from: parent, in: sessions) - 1].id)
     }
 
     private func finishMove(_ moving: (sessions: [Session], before: [[[UUID]]])) {

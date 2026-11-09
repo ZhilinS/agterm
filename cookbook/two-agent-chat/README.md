@@ -2,7 +2,11 @@
 
 Let Claude Code and Codex hold a conversation with each other in one agterm split.
 
+Author: [@umputun](https://github.com/umputun)
+
 *A simplified version of the setup I run myself, cut down to the part worth publishing. Tested for real, with two agents talking to each other through it, but this is a first version and it will be updated as it gets used.*
+
+*[two-agent-mailbox-chat](../two-agent-mailbox-chat/) does the same job through agterm's pane mailboxes instead of typing into the composer, and is the recommended replacement.*
 
 ## What it does
 
@@ -118,6 +122,8 @@ The recipe deliberately does not start agents. Deciding that a pane is safe to t
 **Codex footer rows are recognised by position alone.** The parser ignores one trailing footer row, or two when a blank row separates them from the composer, as with a status line above the shortcut hint; the lower of those two may sit further right when typing hides the hint and leaves only a right-aligned notice such as `⚠ 1 warning · f2 to view`. It never strips a longer indented region, because shortcut rows and modal choices have the same shape, so a layout with more trailing rows is treated as busy and the send retries and refuses until it changes.
 
 **Highly repetitive input can be refused after the opening scrolls away.** A rendered suffix such as a long run of one character can align with both the complete message and one missing part of the current event. The script stops and cleans up when it cannot distinguish those states.
+
+**A message to Claude is capped at about 10,000 characters and cannot end in a backslash.** Past that length Claude Code rewrites the draft into its first and last 500 characters around a `[...Truncated text #1 +0 lines...]` marker, which the read-back cannot check against the source or clean up. A trailing `\` followed by Return becomes a line break instead of a submit. The script refuses both before typing anything and consumes a `--message-file` message that it refuses, so shorten or reword it and send it again.
 
 **Scroll-indicator recognition is limited to Codex's top `↑`.** Other rows and the bottom `↓` are compared literally. Plain screen text cannot distinguish a margin indicator from an identical extra arrow typed at that position; the source comparison constrains recognition but cannot prove which one was drawn.
 
