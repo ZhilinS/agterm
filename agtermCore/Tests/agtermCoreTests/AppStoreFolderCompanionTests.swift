@@ -162,4 +162,15 @@ struct AppStoreFolderCompanionTests {
         #expect(store.undoPendingClose())
         #expect(shapeOf(store, ws) == "a F(b x) c")
     }
+
+    @Test func aPageSessionAfterAFoldersLastGroupStaysInThatFolder() throws {
+        let (store, ws, s) = try fixture()
+        let folder = try #require(store.addFolder(toWorkspace: ws, name: "F", containing: [s[0].id]))
+        store.addFolder(toWorkspace: ws, name: "G", containing: [s[1].id])
+        let x = try companion("x", of: s[0], in: store)
+        let page = try store.addPageSession(after: x.id, overlay: HtmlOverlay(source: .file(path: "/tmp/p.html", grantRoot: nil))).get()
+
+        #expect(store.containerLocation(ofSession: page.id)?.folder == folder.id)
+        #expect(store.workspaces[0].sessions.map(\.id) == [s[0].id, x.id, page.id, s[1].id, s[2].id])
+    }
 }

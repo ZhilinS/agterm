@@ -1,5 +1,7 @@
-import CryptoKit
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking // fork: URLRequest on agterm-server's Linux build
+#endif
 import Observation
 
 /// PageShareConfig is where `session.overlay.share` publishes: a GitLab instance, a project path or id, and an
@@ -231,7 +233,7 @@ public final class PageShares {
     }
 
     nonisolated static func sha256(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        PortableSHA256.hex(data)
     }
 }
 

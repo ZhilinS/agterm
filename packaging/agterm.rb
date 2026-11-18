@@ -37,6 +37,7 @@ cask "agterm" do
 
   zap trash: [
     "~/Library/Application Support/agterm",
+    "~/Library/Caches/com.umputun.agterm",
     "~/Library/Preferences/com.umputun.agterm.plist",
     "~/Library/Saved Application State/com.umputun.agterm.savedState",
   ]

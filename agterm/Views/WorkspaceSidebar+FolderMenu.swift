@@ -83,7 +83,7 @@ extension WorkspaceSidebar.Coordinator {
 
     @objc func menuNewSessionInFolder(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode, let workspace = store.workspace(forFolder: node.id) else { return }
-        addSession(toWorkspace: workspace.id, cwd: actions.resolvedNewSessionCwd(), folder: node.id)
+        addSession(toWorkspace: workspace.id, cwd: actions.resolvedNewSessionCwd(in: workspace.id, store: store), folder: node.id)
     }
 
     @objc func menuDeleteFolder(_ sender: NSMenuItem) {

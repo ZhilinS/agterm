@@ -28,6 +28,9 @@ paths:
   and `CHANGELOG-fork.md`.
 - Fork releases are `x.y.z-fork.N` on top of upstream `x.y.z`. The tag, DMG, cask and manifests carry the
   full string; `CURRENT_PROJECT_VERSION` carries only `x.y.z`. `release_notes()` reads `CHANGELOG-fork.md`.
+  The fork's `release.sh` passes no `AGTERM_UPDATE_FEED`, so the app has no Sparkle updater (upstream's
+  feed would install an upstream build over it), and builds no agterm-server tarballs (no Docker, and
+  `server install` downloads from umputun/agterm); the cask has no `auto_updates`.
 - `renameOnDoubleClick` (nil = on) is mirrored to `GhosttyApp.renameOnDoubleClick`. With it off, a
   workspace or folder double-click does not rename, so the row click toggles at once without the
   double-click deferral.
