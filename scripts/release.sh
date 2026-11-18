@@ -102,11 +102,8 @@ notarize() {
   fi
 }
 
-# build the GitHub release body: the matching CHANGELOG-fork.md section followed by a
-# short install note (signed + notarized; Apple Silicon only, macOS 14+).
-release_notes() {
-  local section
-  section="$(awk -v ver="v$VERSION" '
+changelog_section() {
+  awk -v ver="v$VERSION" '
     $0 ~ "^## " ver "( |$)" {grab=1; next}
     grab && /^## / {exit}
     grab {body[++n]=$0}
@@ -115,7 +112,14 @@ release_notes() {
       while (n>=s && body[n] ~ /^[[:space:]]*$/) n--
       for (i=s; i<=n; i++) print body[i]
     }
-  ' "$ROOT/CHANGELOG-fork.md")"
+  ' "$ROOT/CHANGELOG-fork.md"
+}
+
+# build the GitHub release body: the matching CHANGELOG-fork.md section followed by a
+# short install note (signed + notarized; Apple Silicon only, macOS 14+).
+release_notes() {
+  local section
+  section="$(changelog_section)"
   [ -n "$section" ] || echo "WARNING: no CHANGELOG-fork.md section for v$VERSION — release body will be the install note only" >&2
   [ -n "$section" ] && printf '%s\n\n' "$section"
   cat <<EOF
@@ -130,6 +134,9 @@ EOF
 
 # ── build ────────────────────────────────────────────────────────────────────
 "$ROOT/scripts/setup.sh"
+
+# fork: no agterm-server tarballs (Docker build, and `server install` downloads umputun's release)
+# and no Sparkle feed, so the fork never updates itself to an upstream build; brew upgrades it.
 xcodegen generate >/dev/null
 # plain Release build (NOT archive). The build is left ad-hoc here on purpose:
 # Xcode's own final code-sign runs after the bundle phase and adds no secure
@@ -152,6 +159,12 @@ if [ "$SIGNED" = "1" ]; then
   for helper in agtermctl zmx agterm-session-host; do
     codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/MacOS/$helper"
   done
+  # sign Sparkle's executables before the framework that holds them; library validation needs it on the app's team
+  sparkle="$APP/Contents/Frameworks/Sparkle.framework"
+  for nested in "$sparkle/Versions/B/XPCServices/Installer.xpc" "$sparkle/Versions/B/XPCServices/Downloader.xpc" \
+    "$sparkle/Versions/B/Autoupdate" "$sparkle/Versions/B/Updater.app" "$sparkle"; do
+    codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$nested"
+  done
   codesign --force --options runtime --timestamp \
     --entitlements "$ROOT/agterm/agterm.entitlements" --sign "$SIGN_ID" "$APP"
   codesign --verify --deep --strict "$APP"
@@ -161,6 +174,10 @@ if [ "$SIGNED" = "1" ]; then
       exit 1
     fi
   done
+  if codesign -d --entitlements - "$APP" 2>/dev/null | grep -q 'com.apple.security.cs.'; then
+    echo "the Developer ID app carries a hardened-runtime exception; it must be signed with agterm.entitlements" >&2
+    exit 1
+  fi
 fi
 
 # ── notarize + staple the app ─────────────────────────────────────────────────

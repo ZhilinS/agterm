@@ -131,6 +131,8 @@ public enum PaneIdentityInventory {
         var changed = false
         for workspaceIndex in snapshot.workspaces.indices {
             snapshot.workspaces[workspaceIndex].mapSessions { session in
+                // a page owns no daemon, matching `Session.locallyManagedPaneIdentities` for an open window
+                guard session.page == nil else { return }
                 if session.paneIdentity == nil {
                     session.paneIdentity = UUID()
                     changed = true
@@ -144,6 +146,7 @@ public enum PaneIdentityInventory {
                     }
                     if let splitPaneIdentity = session.splitPaneIdentity { identities.insert(splitPaneIdentity) }
                 }
+                if let scratch = session.scratchPaneIdentity { identities.insert(scratch) }
             }
         }
         return Upgrade(identities: identities, changed: changed)

@@ -44,7 +44,8 @@ If you have upstream installed: `brew uninstall --cask agterm` first.
   share` does the same from a script.
 
 Known differences: `workspaces.json` has a fork-only format, so switching builds starts with an empty
-tree. Dragging folder rows themselves is not done yet.
+tree. Dragging folder rows themselves is not done yet. The fork does not update itself (no Sparkle feed),
+so update with `brew upgrade --cask zhilins/apps/agterm`, and `agtermctl server install` is unavailable.
 
 ## Keeping up with upstream
 

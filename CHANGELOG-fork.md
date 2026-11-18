@@ -1,5 +1,12 @@
 # Fork changelog
 
+## v0.43.0-fork.1 - 2026-11-18
+
+### Improved
+
+- **Up to date with agterm 0.43.0.** Everything upstream shipped through [v0.43.0](https://github.com/umputun/agterm/releases/tag/v0.43.0) is included: remote windows, page rows, Convert to Companion, moving a companion under another session and the rest. A companion moved under another session joins that session's folder. Remote windows have no folders.
+- The fork does not update itself: upstream's Sparkle feed would replace it with an upstream build, so the fork ships without one. Update with `brew upgrade --cask zhilins/apps/agterm`. `agtermctl server install` is unavailable, since the fork publishes no agterm-server build.
+
 ## v0.41.1-fork.1 - 2026-11-09
 
 ### Improved

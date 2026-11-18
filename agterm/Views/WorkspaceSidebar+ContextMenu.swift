@@ -7,16 +7,19 @@ import AppKit
 extension WorkspaceSidebar.Coordinator {
     // MARK: - Context menu
 
-    /// Single click anywhere on a workspace row toggles its expansion, so the whole row is the hit target,
-    /// not just the disclosure triangle. The toggle is DEFERRED by the double-click interval and cancelled
-    /// by `handleDoubleClick`, so renaming does not flip the row open/closed on the way into edit mode;
-    /// with `renameOnDoubleClick` off a double-click renames nothing, so the toggle runs at once.
-    /// `action` fires on a genuine click, never during a drag, so workspace drag-reorder is unaffected.
-    /// `workspaceRowClickExpands` gates the whole-row target only; the disclosure triangle keeps toggling.
+    /// handleSingleClick folds a workspace or folder row: the icon at once, the rest of the row after the
+    /// double-click interval so a rename double-click never folds it, or at once with `renameOnDoubleClick` off.
+    /// `action` never fires during a drag.
     @objc func handleSingleClick(_ sender: NSOutlineView) {
         let row = sender.clickedRow
-        guard row >= 0, let node = sender.item(atRow: row) as? SidebarNode, node.kind != .session,
-              GhosttyApp.shared.workspaceRowClickExpands else { return }
+        guard row >= 0, let node = sender.item(atRow: row) as? SidebarNode, node.kind != .session else { return }
+        if clickHitsWorkspaceIcon(sender, row: row) {
+            pendingRowToggle?.cancel()
+            pendingRowToggle = nil
+            toggleExpansion(of: node, in: sender)
+            return
+        }
+        guard GhosttyApp.shared.workspaceRowClickExpands else { return }
         if let event = NSApp.currentEvent {
             let point = sender.convert(event.locationInWindow, from: nil)
             // clicking the disclosure triangle already toggles natively — ignore that region so we don't double-toggle.
@@ -46,13 +49,26 @@ extension WorkspaceSidebar.Coordinator {
     }
 
     @objc func handleDoubleClick(_ sender: NSOutlineView) {
-        // a double-click is a rename, not an expand/collapse: cancel the pending single-click toggle.
+        // a double-click outside the icon is a rename: cancel the pending single-click toggle.
         pendingRowToggle?.cancel()
         pendingRowToggle = nil
         let row = sender.clickedRow
-        guard row >= 0, let node = sender.item(atRow: row) as? SidebarNode,
-              node.kind == .session || GhosttyApp.shared.renameOnDoubleClick else { return }
+        guard row >= 0, let node = sender.item(atRow: row) as? SidebarNode else { return }
+        // the second click of an icon double-click arrives only here, so it toggles back as the triangle does.
+        if node.kind != .session, clickHitsWorkspaceIcon(sender, row: row) {
+            toggleExpansion(of: node, in: sender)
+            return
+        }
+        guard node.kind == .session || GhosttyApp.shared.renameOnDoubleClick else { return }
         renameController.beginEditing(node: node)
+    }
+
+    private func clickHitsWorkspaceIcon(_ outline: NSOutlineView, row: Int) -> Bool {
+        guard let event = NSApp.currentEvent,
+              let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView,
+              let icon = cell.imageView, !icon.isHidden else { return false }
+        let point = outline.convert(event.locationInWindow, from: nil)
+        return icon.convert(icon.bounds, to: outline).contains(point)
     }
 
     /// Animated to match the disclosure triangle; `.claude/rules/sidebar.md` owns why, why it is not gated on
@@ -72,6 +88,8 @@ extension WorkspaceSidebar.Coordinator {
         menu.autoenablesItems = false
         let sessionTargets = node.kind == .session ? store.sidebarSelectionTargets(forContextSession: node.id) : []
         let sessionCount = sessionTargets.count
+        // a remote window's rows change only on its server, which cannot be asked while the window is not connected
+        let serverBlocked = store.serverActionsBlocked
 
         // "Clear Status" sits first for a session row with a status, the `agtermctl session status idle` effect;
         // "Mark for Attention" is its idle-row counterpart, `session status completed` on the idle targets.
@@ -98,6 +116,7 @@ extension WorkspaceSidebar.Coordinator {
             let rename = NSMenuItem(title: "Rename", action: #selector(menuRename(_:)), keyEquivalent: "")
             rename.target = self
             rename.representedObject = node
+            rename.isEnabled = !serverBlocked
             menu.addItem(rename)
         }
 
@@ -117,27 +136,50 @@ extension WorkspaceSidebar.Coordinator {
                 let duplicate = NSMenuItem(title: "Duplicate Session", action: #selector(menuDuplicate(_:)), keyEquivalent: "")
                 duplicate.target = self
                 duplicate.representedObject = node
+                duplicate.isEnabled = !serverBlocked
                 menu.addItem(duplicate)
             }
             if sessionCount == 1 {
+                menu.addItem(.separator())
                 let companion = NSMenuItem(title: "New Companion", action: #selector(menuNewCompanion(_:)), keyEquivalent: "")
                 companion.target = self
                 companion.representedObject = node
+                companion.isEnabled = !serverBlocked
                 menu.addItem(companion)
                 if store.session(withID: node.id)?.content == .terminal {
                     let copy = NSMenuItem(title: "Duplicate as Companion", action: #selector(menuDuplicateCompanion(_:)),
                                           keyEquivalent: "")
                     copy.target = self
                     copy.representedObject = node
+                    copy.isEnabled = !serverBlocked
                     menu.addItem(copy)
                 }
+                if let session = store.session(withID: node.id), session.parentID == nil {
+                    let convert = NSMenuItem(title: "Convert to Companion", action: #selector(menuConvertCompanion(_:)),
+                                             keyEquivalent: "")
+                    convert.target = self
+                    convert.representedObject = node
+                    // a server window's row is converted by its server, a row attached from another host by its origin
+                    convert.isEnabled = !store.isRemoteWindow || !serverBlocked
+                    menu.addItem(convert)
+                }
+                menu.addItem(.separator())
             }
             let newFolder = NSMenuItem(title: "New Folder", action: #selector(menuNewFolderFromSessions(_:)), keyEquivalent: "")
             newFolder.target = self
             newFolder.representedObject = SessionBatchRequest(sessionIDs: sessionTargets,
                                                               targetID: store.workspace(forSession: node.id)?.id)
+            newFolder.isEnabled = !store.isRemoteWindow
             menu.addItem(newFolder)
-            if let moveTo = moveToItem(for: sessionTargets) { menu.addItem(moveTo) }
+            if sessionCount == 1, let id = sessionTargets.first, let submenu = companionMoveMenu(for: id) {
+                let moveTo = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
+                moveTo.submenu = submenu
+                moveTo.isEnabled = !serverBlocked
+                menu.addItem(moveTo)
+            } else if let moveTo = moveToItem(for: sessionTargets) {
+                moveTo.isEnabled = !serverBlocked
+                menu.addItem(moveTo)
+            }
             // "Flag"/"Unflag" toggles flagged working-set membership; the label reflects the current state.
             let allFlagged = !sessionTargets.isEmpty && sessionTargets.allSatisfy { store.session(withID: $0)?.flagged == true }
             let flagTitle: String
@@ -149,8 +191,11 @@ extension WorkspaceSidebar.Coordinator {
             let flag = NSMenuItem(title: flagTitle, action: #selector(menuToggleFlag(_:)), keyEquivalent: "")
             flag.target = self
             flag.representedObject = SessionBatchRequest(sessionIDs: sessionTargets)
+            flag.isEnabled = !store.marksBlocked
             menu.addItem(flag)
-            menu.addItem(tintMenuItem(forSessions: sessionTargets))
+            let tint = tintMenuItem(forSessions: sessionTargets)
+            tint.isEnabled = !store.marksBlocked
+            menu.addItem(tint)
             if sessionCount == 1 {
                 let reveal = NSMenuItem(title: "Reveal in Finder", action: #selector(menuRevealInFinder(_:)), keyEquivalent: "")
                 reveal.target = self
@@ -167,14 +212,17 @@ extension WorkspaceSidebar.Coordinator {
             let newSession = NSMenuItem(title: "New Session", action: #selector(menuNewSession(_:)), keyEquivalent: "")
             newSession.target = self
             newSession.representedObject = node
+            newSession.isEnabled = !serverBlocked
             menu.addItem(newSession)
             let openSession = NSMenuItem(title: "Open Directory…", action: #selector(menuOpenSession(_:)), keyEquivalent: "")
             openSession.target = self
             openSession.representedObject = node
+            openSession.isEnabled = !store.isRemoteWindow
             menu.addItem(openSession)
             let newFolder = NSMenuItem(title: "New Folder", action: #selector(menuNewFolder(_:)), keyEquivalent: "")
             newFolder.target = self
             newFolder.representedObject = node
+            newFolder.isEnabled = !store.isRemoteWindow
             menu.addItem(newFolder)
             // the one per-row fold that survives a hidden chevron with row click turned off.
             let fold = NSMenuItem(title: outline.isItemExpanded(node) ? "Collapse Workspace" : "Expand Workspace",
@@ -202,18 +250,20 @@ extension WorkspaceSidebar.Coordinator {
             menu.addItem(membership)
             menu.addItem(.separator())
             // targets every session of the workspace, including the ones the flagged tree layout hides.
-            let flagAll = NSMenuItem(title: store.allSessionsFlagged(inWorkspace: node.id) ? "Unflag All Sessions" : "Flag All Sessions",
+            let flagAll = NSMenuItem(title: store.workspaceAllFlagged(node.id) ? "Unflag All Sessions" : "Flag All Sessions",
                                      action: #selector(menuToggleWorkspaceFlag(_:)), keyEquivalent: "")
             flagAll.target = self
             flagAll.representedObject = node
-            flagAll.isEnabled = store.workspaces.first { $0.id == node.id }?.sessions.isEmpty == false
+            flagAll.isEnabled = store.workspaceHasSessions(node.id) && !store.marksBlocked
             menu.addItem(flagAll)
-            menu.addItem(tintMenuItem(forWorkspace: node.id))
+            let workspaceTint = tintMenuItem(forWorkspace: node.id)
+            workspaceTint.isEnabled = !store.marksBlocked
+            menu.addItem(workspaceTint)
             menu.addItem(.separator())
             let delete = NSMenuItem(title: "Delete Workspace", action: #selector(menuDeleteWorkspace(_:)), keyEquivalent: "")
             delete.target = self
             delete.representedObject = node
-            delete.isEnabled = store.canRemoveWorkspace
+            delete.isEnabled = store.canCloseWorkspace
             menu.addItem(delete)
         case .folder:
             break
@@ -260,7 +310,39 @@ extension WorkspaceSidebar.Coordinator {
 
     @objc func menuMove(_ sender: NSMenuItem) {
         guard let request = sender.representedObject as? SessionBatchRequest, let targetID = request.targetID else { return }
+        if store.remoteActions != nil {
+            for id in request.sessionIDs { actions.performRemote(.moveSession(id, to: .workspace(targetID)), in: store) }
+            return
+        }
         store.moveSessions(request.sessionIDs, toWorkspace: targetID)
+    }
+
+    private func companionMoveMenu(for id: UUID) -> NSMenu? {
+        guard let parentID = store.session(withID: id)?.parentID else { return nil }
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        for workspace in store.workspaces {
+            let parents = workspace.sessions.filter { candidate in
+                guard candidate.parentID == nil, candidate.id != parentID else { return false }
+                if case .success = store.canMoveCompanion(id, under: candidate.id) { return true }
+                return false
+            }
+            guard !parents.isEmpty else { continue }
+            submenu.addItem(.sectionHeader(title: workspace.name))
+            for parent in parents {
+                let item = NSMenuItem(title: parent.displayName, action: #selector(menuMoveCompanion(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = SessionBatchRequest(sessionIDs: [id], targetID: parent.id)
+                submenu.addItem(item)
+            }
+        }
+        return submenu.items.isEmpty ? nil : submenu
+    }
+
+    @objc private func menuMoveCompanion(_ sender: NSMenuItem) {
+        guard let request = sender.representedObject as? SessionBatchRequest, let id = request.sessionIDs.first,
+              let parentID = request.targetID else { return }
+        actions.moveCompanion(id, under: parentID, at: nil, in: store)
     }
 
     @objc private func menuClose(_ sender: NSMenuItem) {
@@ -272,7 +354,7 @@ extension WorkspaceSidebar.Coordinator {
 
     @objc private func menuClearStatus(_ sender: NSMenuItem) {
         guard let request = sender.representedObject as? SessionBatchRequest else { return }
-        for id in request.sessionIDs { store.setAgentIndicator(AgentIndicator(), forSession: id) }
+        for id in request.sessionIDs { store.clearStatus(id) }
     }
 
     @objc private func menuMarkForAttention(_ sender: NSMenuItem) {
@@ -287,6 +369,7 @@ extension WorkspaceSidebar.Coordinator {
 
     @objc private func menuToggleWorkspaceFlag(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
+        if actions.sendWorkspaceFlag(!store.workspaceAllFlagged(node.id), to: node.id, in: store) { return }
         store.applyWorkspaceFlag(.toggle, to: node.id)
     }
 
@@ -299,6 +382,11 @@ extension WorkspaceSidebar.Coordinator {
     @objc private func menuDuplicateCompanion(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
         actions.duplicateAsCompanion(node.id, in: store)
+    }
+
+    @objc private func menuConvertCompanion(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? SidebarNode else { return }
+        actions.convertToCompanion(node.id, in: store)
     }
 
     @objc private func menuNewCompanion(_ sender: NSMenuItem) {
@@ -330,7 +418,7 @@ extension WorkspaceSidebar.Coordinator {
             addNewSession(toWorkspace: node.id)
         case .folder:
             guard let workspace = store.workspace(forFolder: node.id) else { return }
-            addSession(toWorkspace: workspace.id, cwd: actions.resolvedNewSessionCwd(), folder: node.id)
+            addSession(toWorkspace: workspace.id, cwd: actions.resolvedNewSessionCwd(in: workspace.id, store: store), folder: node.id)
         case .session:
             return
         }
@@ -366,7 +454,8 @@ extension WorkspaceSidebar.Coordinator {
     /// addNewSession shares the directory and placement settings of `AppActions.newSession()`
     /// with the workspace row's New Session and "+".
     private func addNewSession(toWorkspace workspaceID: UUID) {
-        addSession(toWorkspace: workspaceID, cwd: actions.resolvedNewSessionCwd(),
+        if store.remoteActions != nil { return actions.newRemoteSession(inWorkspace: workspaceID, of: store) }
+        addSession(toWorkspace: workspaceID, cwd: actions.resolvedNewSessionCwd(in: workspaceID, store: store),
                    anchor: actions.resolvedNewSessionAnchor(in: workspaceID, store: store))
     }
 
@@ -383,6 +472,7 @@ extension WorkspaceSidebar.Coordinator {
     }
 
     private func openDirectoryAndAddSession(toWorkspace workspaceID: UUID) {
+        guard !store.isRemoteWindow else { return }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
