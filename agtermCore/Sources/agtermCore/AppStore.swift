@@ -477,8 +477,7 @@ public final class AppStore {
                                         focused: focusedWorkspaceIDs.contains(workspace.id) ? true : nil,
                                         collapsed: workspace.isExpanded ? nil : true,
                                         tint: workspace.tint?.color.rawValue,
-                                        tintOn: workspace.tint?.parts.map(\.rawValue),
-                                        sessions: forkDecorated(sessions, in: workspace))
+                                        tintOn: workspace.tint?.parts.map(\.rawValue), sessions: forkDecorated(sessions, in: workspace))
         }
         return ControlTree(workspaces: nodes, idleMs: idleMs(), autoFollowMs: autoFollowMs,
                            attentionIncludesActive: attentionIncludesActive,
@@ -561,14 +560,12 @@ public final class AppStore {
 
     /// Creates a session in the given workspace and selects it when `select` (the default); `select: false`
     /// appends it in the background, leaving selection/focus/recency untouched (`session.new --no-select`).
-    /// `name` seeds `customName` (trimmed; blank = the auto basename, matching `renameSession`). `anchor` puts it
-    /// beside that session in its container (`--after`/`--before`), else `at` inserts at the clamped flat index,
-    /// else it appends. Nil if no workspace matches.
+    /// `name` seeds `customName` (trimmed; blank = the auto basename, matching `renameSession`). `anchor` puts it beside
+    /// that session in its container (`--after`/`--before`), else `at` inserts at the clamped flat index, else it appends.
     @discardableResult
     public func addSession(toWorkspace workspaceID: UUID, cwd: String, command: String? = nil,
                            name: String? = nil, wait: Bool = false, at index: Int? = nil, anchor: SessionAnchor? = nil,
-                           select: Bool = true,
-                           remoteHost: String? = nil, remoteSessionID: String? = nil, tint: SidebarTint? = nil,
+                           select: Bool = true, remoteHost: String? = nil, remoteSessionID: String? = nil, tint: SidebarTint? = nil,
                            parentID: UUID? = nil,
                            content: SessionContent = .terminal) -> Session? {
         guard let wsIndex = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
@@ -583,8 +580,7 @@ public final class AppStore {
         session.tint = tint
         session.parentID = parentID
         let parentIndex = parentID.flatMap { id in workspaces[wsIndex].sessions.firstIndex { $0.id == id } }
-        if parentID == nil, let anchor,
-           workspaces[wsIndex].insertSession(session, anchor: topLevelAnchor(anchor, in: workspaces[wsIndex])) { // fork
+        if parentID == nil, let anchor, workspaces[wsIndex].insertSession(session, anchor: topLevelAnchor(anchor, in: workspaces[wsIndex])) { // fork
         } else if let index = index ?? parentIndex.map({ Self.groupEnd(from: $0, in: workspaces[wsIndex].sessions) }) {
             let destination = insertionIndex(for: session, near: index, in: workspaces[wsIndex].sessions)
             workspaces[wsIndex].sessions.insert(session, at: destination)

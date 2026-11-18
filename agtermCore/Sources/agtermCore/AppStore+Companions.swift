@@ -155,12 +155,14 @@ extension AppStore {
                                                homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)
         let slot = SessionSlot(workspace: workspace.id, index: Self.groupEnd(from: location.sessionIndex, in: workspace.sessions),
                                parent: nil, cwd: cwd)
-        return addPage(overlay, in: slot, name: nil, select: select, backgroundColor: backgroundColor)
+        return addPage(overlay, in: slot, name: nil, select: select, backgroundColor: backgroundColor,
+                       anchor: .after((parent(of: anchor) ?? anchor).id)) // fork: stays in the anchor's folder
     }
 
     private func addPage(_ overlay: HtmlOverlay, in slot: SessionSlot, name: String?, select: Bool,
-                         backgroundColor: String?) -> Result<Session, CompanionRefusal> {
-        guard let page = addSession(toWorkspace: slot.workspace, cwd: slot.cwd, name: name, at: slot.index, select: select,
+                         backgroundColor: String?, anchor: SessionAnchor? = nil) -> Result<Session, CompanionRefusal> {
+        guard let page = addSession(toWorkspace: slot.workspace, cwd: slot.cwd, name: name, at: slot.index, anchor: anchor,
+                                    select: select,
                                     parentID: slot.parent, content: .page) else {
             return .failure(.noSuchSession)
         }

@@ -632,13 +632,11 @@ final class ControlServer {
     /// Commands whose dispatch awaits an ssh round trip. `zmx.attach` re-resolves the remote first, so it
     /// carries the same wait; local `zmx.list` blocks too, but bounded, and stays inline to keep cache order.
     /// `session.restart` waits on process exits for seconds, while the shell it starts calls this socket.
-    /// `session.overlay.share` and `.comments` wait on GitLab.
     nonisolated private static func waitsOnNetwork(_ cmd: Command) -> Bool {
         // companion creation may ssh to a remote parent's origin, which can be this Mac's own socket;
-        // update.check waits on the feed
+        // update.check waits on the feed, the fork's overlay share/comments on GitLab
         [.zmxTree, .zmxAttach, .zmxAttachGroup, .sessionRestart, .sessionCompanionNew, .sessionCompanionDuplicate,
-         .sessionCompanionPage, .sessionRemoteNew, .windowRemoteOpen, .updateCheck,
-         .sessionOverlayShare, .sessionOverlayComments].contains(cmd)
+         .sessionCompanionPage, .sessionRemoteNew, .windowRemoteOpen, .updateCheck, .sessionOverlayShare, .sessionOverlayComments].contains(cmd)
     }
 
     // these polling reads cannot change window nodes; skip the AppKit rebuild

@@ -188,7 +188,7 @@ extension WorkspaceSidebar.Coordinator {
         let sessionIDs = draggedSessionIDs(from: info)
         guard !sessionIDs.isEmpty, let node = item as? SidebarNode else { return nil }
         // fork: the ordinary tree drops in `items` space; a companion gap or sibling move and the flagged tree stay flat
-        if store.sidebarMode == .tree, !(node.kind == .session && index != SidebarDrop.onItemIndex),
+        if store.sidebarMode == .tree, store.remoteActions == nil, !(node.kind == .session && index != SidebarDrop.onItemIndex),
            sessionIDs.contains(where: { store.session(withID: $0)?.parentID == nil }) {
             return resolveItemMove(sessionIDs, node: node, childIndex: index)
         }
@@ -287,6 +287,7 @@ extension WorkspaceSidebar.Coordinator {
         return SessionMove(sessionIDs: ids, workspace: move.workspace, folder: move.folder,
                            dropChildIndex: SidebarDrop.slot(forListIndex: move.dropChildIndex, companions: flags),
                            destination: move.destination, itemSpace: true)
+    }
 
     // dropItem/dropChildIndex is what validateDrop sets and acceptDrop reads back, so both resolve the same move
     private struct CompanionReparentDrop {
